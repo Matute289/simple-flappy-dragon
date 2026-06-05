@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Flappy Dragon</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: monospace;
+            color: #aaa;
+        }
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+        }
+        #loading {
+            font-size: 1.2rem;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">Loading...</div>
+    <script type="module">
+        import init from './pkg/flappy_dragon.js';
+        await init();
+        document.getElementById('loading').remove();
+    </script>
+</body>
+</html>

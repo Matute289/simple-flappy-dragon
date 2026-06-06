@@ -1,0 +1,8 @@
+services:
+  flappy-dragon:
+    image: flappy-dragon:latest
+    container_name: flappy-dragon
+    ports:
+      - "127.0.0.1:8006:80"
+    mem_limit: 32m
+    restart: unless-stopped

@@ -1,0 +1,10 @@
+services:
+  flappy-dragon:
+    image: flappy-dragon:test
+    ports:
+      - "8888:80"
+
+  flappy-scores:
+    image: flappy-scores:test
+    volumes:
+      - /tmp/scores-local:/data

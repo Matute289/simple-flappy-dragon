@@ -7,17 +7,46 @@ const SCREEN_WIDTH: i32 = 80;
 const SCREEN_HEIGHT: i32 = 50;
 const FRAME_DURATION: f32 = 75.0;
 
+// --- WASM-only: JS import and restart flag ---
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+extern "C" {
+    fn on_game_over(score: u32);
+}
+
+#[cfg(target_arch = "wasm32")]
+use std::cell::Cell;
+
+#[cfg(target_arch = "wasm32")]
+thread_local! {
+    static INITIALIZED: Cell<bool> = Cell::new(false);
+    static RESTART_REQUESTED: Cell<bool> = Cell::new(false);
+}
+
+/// Called by JS when the user clicks PLAY.
+/// First call initializes bracket-lib; subsequent calls restart the game.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn start_game() {
+    console_error_panic_hook::set_once();
+
+    let already_running = INITIALIZED.with(|i| i.get());
+    if already_running {
+        RESTART_REQUESTED.with(|r| r.set(true));
+        return;
+    }
+    INITIALIZED.with(|i| i.set(true));
+    run().expect("Game initialization failed");
+}
+
+// --- Core game ---
+
 pub fn run() -> BError {
     let context = BTermBuilder::simple80x50()
         .with_title("Flappy Dragon")
         .build()?;
     main_loop(context, State::new())
-}
-
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen(start)]
-pub fn wasm_main() {
-    run().expect("Game initialization failed");
 }
 
 struct State {
@@ -26,6 +55,8 @@ struct State {
     obstacle: Obstacle,
     mode: GameMode,
     score: i32,
+    #[cfg(target_arch = "wasm32")]
+    game_over_reported: bool,
 }
 
 impl State {
@@ -34,8 +65,10 @@ impl State {
             player: Player::new(5, 25),
             frame_time: 0.0,
             obstacle: Obstacle::new(SCREEN_WIDTH, 0),
-            mode: GameMode::Menu,
+            mode: GameMode::Playing,
             score: 0,
+            #[cfg(target_arch = "wasm32")]
+            game_over_reported: false,
         }
     }
 
@@ -62,58 +95,44 @@ impl State {
         }
     }
 
-    fn restarts(&mut self) {
-        self.player = Player::new(5, 25);
-        self.frame_time = 0.0;
-        self.obstacle = Obstacle::new(SCREEN_WIDTH, 0);
-        self.mode = GameMode::Playing;
-        self.score = 0;
-    }
-
-    fn main_menu(&mut self, ctx: &mut BTerm) {
-        ctx.cls();
-        ctx.print_centered(5, "Welcome to Flappy Dragon");
-        ctx.print_centered(8, "(P) Play Game");
-        ctx.print_centered(9, "(Q) Quit Game");
-
-        if let Some(key) = ctx.key {
-            match key {
-                VirtualKeyCode::P => self.restarts(),
-                VirtualKeyCode::Q => ctx.quitting = true,
-                _ => {}
-            }
-        }
-    }
-
     fn dead(&mut self, ctx: &mut BTerm) {
-        ctx.cls();
-        ctx.print_centered(5, "You are dead!");
-        ctx.print_centered(6, &format!("You earned {} points", self.score));
-        ctx.print_centered(8, "(P) Play Again");
-        ctx.print_centered(9, "(Q) Quit Game");
-
-        if let Some(key) = ctx.key {
-            match key {
-                VirtualKeyCode::P => self.restarts(),
-                VirtualKeyCode::Q => ctx.quitting = true,
-                _ => {}
-            }
+        #[cfg(target_arch = "wasm32")]
+        if !self.game_over_reported {
+            on_game_over(self.score as u32);
+            self.game_over_reported = true;
         }
+        // Clear canvas — HTML overlay appears on top
+        ctx.cls();
     }
 }
 
 impl GameState for State {
     fn tick(&mut self, ctx: &mut BTerm) {
+        // Check for restart request from JS
+        #[cfg(target_arch = "wasm32")]
+        {
+            let restart = RESTART_REQUESTED.with(|r| {
+                if r.get() {
+                    r.set(false);
+                    true
+                } else {
+                    false
+                }
+            });
+            if restart {
+                *self = State::new();
+                return;
+            }
+        }
+
         match self.mode {
-            GameMode::Menu => self.main_menu(ctx),
-            GameMode::End => self.dead(ctx),
             GameMode::Playing => self.play(ctx),
+            GameMode::End => self.dead(ctx),
         }
     }
 }
 
 enum GameMode {
-    Menu,
     Playing,
     End,
 }

@@ -13,6 +13,7 @@ bracket-lib = "=0.8.1"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
 getrandom = { version = "0.2", features = ["js"] }
+console_error_panic_hook = "0.1"
 
 [patch.crates-io]
 ctrlc = { path = "patches/ctrlc" }

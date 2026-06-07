@@ -7,6 +7,57 @@ const SCREEN_WIDTH: i32 = 80;
 const SCREEN_HEIGHT: i32 = 50;
 const FRAME_DURATION: f32 = 75.0;
 
+// --- Pure logic helpers (no bracket-lib context; tested via `cargo test`) ---
+
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
+}
+
+const SKY_COLORS: [(u8, u8, u8); 6] = [
+    (255, 100,  50),  // 0 Dawn
+    (255, 210, 120),  // 1 Morning
+    ( 80, 160, 255),  // 2 Noon
+    (140, 200, 255),  // 3 Afternoon
+    (220,  90,  40),  // 4 Dusk
+    ( 10,  10,  55),  // 5 Night
+];
+const SKY_PHASE_MS: f32 = 30_000.0;
+const SKY_TOTAL_MS: f32 = SKY_PHASE_MS * 6.0; // 180_000 ms = 3 minutes
+const CLOUD_ACTIVATION_MS: f32 = SKY_TOTAL_MS; // clouds start after 1 full cycle
+
+fn sky_bg_color_at(sky_time_ms: f32) -> RGB {
+    let t = sky_time_ms % SKY_TOTAL_MS;
+    let phase_f = t / SKY_PHASE_MS;
+    let phase = phase_f as usize % 6;
+    let phase_t = phase_f - phase as f32;
+    let next = (phase + 1) % 6;
+    let (r1, g1, b1) = SKY_COLORS[phase];
+    let (r2, g2, b2) = SKY_COLORS[next];
+    RGB::from_f32(
+        lerp(r1 as f32 / 255.0, r2 as f32 / 255.0, phase_t),
+        lerp(g1 as f32 / 255.0, g2 as f32 / 255.0, phase_t),
+        lerp(b1 as f32 / 255.0, b2 as f32 / 255.0, phase_t),
+    )
+}
+
+fn frame_duration_for(score: i32, classic: bool) -> f32 {
+    if classic { return 75.0; }
+    (75.0 - score as f32 * 1.5).max(30.0)
+}
+
+fn gap_size_for(score: i32, classic: bool) -> i32 {
+    if classic {
+        i32::max(2, 20 - score)
+    } else {
+        i32::max(4, 16 - (score / 20) * 2)
+    }
+}
+
+fn player_x_speed_for(score: i32, classic: bool) -> i32 {
+    if classic { return 2; }
+    2 + (score / 10)
+}
+
 // --- WASM-only: JS import and restart flag ---
 
 #[cfg(target_arch = "wasm32")]
@@ -201,5 +252,77 @@ impl Obstacle {
         let player_above_gap = player.y < self.gap_y - half_size;
         let player_below_gap = player.y > self.gap_y + half_size;
         does_x_match && (player_above_gap || player_below_gap)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn frame_duration_classic_is_fixed() {
+        assert_eq!(frame_duration_for(0, true), 75.0);
+        assert_eq!(frame_duration_for(100, true), 75.0);
+    }
+
+    #[test]
+    fn frame_duration_new_decreases_with_score() {
+        assert_eq!(frame_duration_for(0, false), 75.0);
+        assert_eq!(frame_duration_for(30, false), 30.0);
+        assert_eq!(frame_duration_for(100, false), 30.0); // capped
+    }
+
+    #[test]
+    fn gap_size_classic_shrinks_every_pipe() {
+        assert_eq!(gap_size_for(0, true), 20);
+        assert_eq!(gap_size_for(10, true), 10);
+        assert_eq!(gap_size_for(20, true), 2); // capped
+        assert_eq!(gap_size_for(50, true), 2);
+    }
+
+    #[test]
+    fn gap_size_new_shrinks_every_20_pipes() {
+        assert_eq!(gap_size_for(0, false), 16);
+        assert_eq!(gap_size_for(19, false), 16);
+        assert_eq!(gap_size_for(20, false), 14);
+        assert_eq!(gap_size_for(80, false), 8); // floor not yet hit; capped at 4 only at score >= 120
+    }
+
+    #[test]
+    fn player_x_speed_classic_is_fixed() {
+        assert_eq!(player_x_speed_for(0, true), 2);
+        assert_eq!(player_x_speed_for(50, true), 2);
+    }
+
+    #[test]
+    fn player_x_speed_new_increases_every_10() {
+        assert_eq!(player_x_speed_for(0, false), 2);
+        assert_eq!(player_x_speed_for(9, false), 2);
+        assert_eq!(player_x_speed_for(10, false), 3);
+        assert_eq!(player_x_speed_for(20, false), 4);
+    }
+
+    #[test]
+    fn sky_color_at_dawn() {
+        let c = sky_bg_color_at(0.0);
+        assert!((c.r - 255.0 / 255.0).abs() < 0.01);
+        assert!((c.g - 100.0 / 255.0).abs() < 0.01);
+        assert!((c.b -  50.0 / 255.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn sky_color_at_night() {
+        let c = sky_bg_color_at(SKY_PHASE_MS * 5.0); // start of night
+        assert!((c.r - 10.0 / 255.0).abs() < 0.01);
+        assert!((c.b - 55.0 / 255.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn sky_color_wraps_after_full_cycle() {
+        let c0 = sky_bg_color_at(0.0);
+        let c1 = sky_bg_color_at(SKY_TOTAL_MS);
+        assert!((c0.r - c1.r).abs() < 0.01);
+        assert!((c0.g - c1.g).abs() < 0.01);
+        assert!((c0.b - c1.b).abs() < 0.01);
     }
 }

@@ -4,8 +4,10 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -44,6 +46,7 @@ func readCSV() ([]Entry, error) {
 
 	records, err := csv.NewReader(f).ReadAll()
 	if err != nil {
+		log.Printf("scores: failed to read CSV: %v", err)
 		return nil, err
 	}
 
@@ -69,18 +72,25 @@ func readCSV() ([]Entry, error) {
 
 func writeCSV(entries []Entry) error {
 	entries = sortAndTrim(entries, maxEntries)
-	f, err := os.Create(csvPath())
+	dir := filepath.Dir(csvPath())
+	tmp, err := os.CreateTemp(dir, "scores-*.csv")
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	w := csv.NewWriter(f)
+	tmpName := tmp.Name()
+	w := csv.NewWriter(tmp)
 	w.Write([]string{"name", "score"})
 	for _, e := range entries {
 		w.Write([]string{e.Name, strconv.Itoa(e.Score)})
 	}
 	w.Flush()
-	return w.Error()
+	if err := w.Error(); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	tmp.Close()
+	return os.Rename(tmpName, csvPath())
 }
 
 func sortAndTrim(entries []Entry, max int) []Entry {
@@ -128,6 +138,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(entries)
 
 	case http.MethodPost:
+		r.Body = http.MaxBytesReader(w, r.Body, 1024)
 		var entry Entry
 		if err := json.NewDecoder(r.Body).Decode(&entry); err != nil {
 			http.Error(w, "invalid JSON", http.StatusBadRequest)
@@ -158,5 +169,5 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	http.HandleFunc("/", handler)
-	http.ListenAndServe(":8080", nil)
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }

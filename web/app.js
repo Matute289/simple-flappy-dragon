@@ -119,6 +119,7 @@ async function showScores() {
   );
   document.getElementById('scores-overlay').style.display = 'flex';
   document.getElementById('menu-overlay').style.display = 'none';
+  document.getElementById('gameover-overlay').style.display = 'none';
 }
 
 // ── Called by Rust WASM ──────────────────────────────

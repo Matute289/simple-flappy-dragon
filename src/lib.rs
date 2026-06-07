@@ -213,7 +213,64 @@ impl State {
 
     // Stub implementations — filled in later tasks
     fn update_weather(&mut self, _delta_ms: f32) {}
-    fn draw_sky(&self, _ctx: &mut BTerm, _sky_color: RGB) {}
+    fn draw_sky(&self, ctx: &mut BTerm, sky_color: RGB) {
+        let t = self.sky_time % SKY_TOTAL_MS;
+        let phase_f = t / SKY_PHASE_MS;
+        let phase = phase_f as usize % 6;
+        let phase_t = phase_f - phase as f32; // 0.0–1.0 within current phase
+
+        // ── Stars: visible in phases 5 (Night) and 0 (Dawn, fading out) ──
+        const STARS: [(i32, i32); 10] = [
+            (10, 2), (20, 4), (30, 2), (45, 5), (55, 3),
+            (63, 6), (70, 2), (15, 7), (38, 8), (60, 7),
+        ];
+        let star_alpha: f32 = match phase {
+            5 => 1.0,
+            0 => 1.0 - phase_t, // fade out as dawn brightens
+            4 => phase_t,        // fade in as dusk darkens
+            _ => 0.0,
+        };
+        if star_alpha > 0.05 {
+            let v = (star_alpha * 200.0) as u8;
+            let star_color = RGB::from_u8(v, v, v / 2 + 30); // slight warm tint
+            for (sx, sy) in &STARS {
+                ctx.set(*sx, *sy, star_color, sky_color, 250u16); // · dot
+            }
+        }
+
+        // ── Sun: phases 0–4 (Dawn through Dusk) ──
+        // Sun x sweeps 5→74 over 5 phases (150_000 ms)
+        if phase < 5 && self.weather_state < 3 {
+            let sun_progress = (t / (SKY_PHASE_MS * 5.0)).min(1.0);
+            let sun_x = (5.0 + sun_progress * 69.0) as i32;
+            let sun_color = if self.weather_state == 2 {
+                RGB::from_u8(160, 140, 0)
+            } else {
+                RGB::named(YELLOW)
+            };
+            ctx.set(sun_x, 3, sun_color, sky_color, 15u16); // ☼
+        }
+
+        // ── Moon: phases 4–5–0 (Dusk through Night into next Dawn) ──
+        // Moon visible during dusk (phase 4), night (phase 5), dawn (phase 0 of next cycle)
+        let moon_visible = phase >= 4 || phase == 0;
+        if moon_visible && self.weather_state < 3 {
+            let moon_arc_start = SKY_PHASE_MS * 4.0;
+            let moon_elapsed = if t >= moon_arc_start {
+                t - moon_arc_start
+            } else {
+                (SKY_TOTAL_MS - moon_arc_start) + t // wrapped past midnight
+            };
+            let moon_t = (moon_elapsed / (SKY_PHASE_MS * 3.0)).min(1.0);
+            let moon_x = (5.0 + moon_t * 69.0) as i32;
+            let moon_color = if self.weather_state == 2 {
+                RGB::from_u8(150, 150, 150)
+            } else {
+                RGB::named(WHITE)
+            };
+            ctx.set(moon_x, 5, moon_color, sky_color, 9u16); // ○
+        }
+    }
     fn draw_clouds(&self, _ctx: &mut BTerm, _sky_color: RGB) {}
 }
 

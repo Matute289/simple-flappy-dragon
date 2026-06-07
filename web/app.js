@@ -106,6 +106,7 @@ async function showGameOver(score) {
 
   document.getElementById('gameover-overlay').style.display = 'flex';
   document.getElementById('menu-overlay').style.display = 'none';
+  document.getElementById('scores-overlay').style.display = 'none';
 }
 
 async function showScores() {

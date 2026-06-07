@@ -1,36 +1,61 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <title>Flappy Dragon</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background: #000;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            font-family: monospace;
-            color: #aaa;
-        }
-        canvas {
-            display: block;
-            image-rendering: pixelated;
-        }
-        #loading {
-            font-size: 1.2rem;
-            margin-top: 1rem;
-        }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flappy Dragon</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div id="loading">Loading...</div>
-    <script type="module">
-        import init from './pkg/flappy_dragon.js';
-        await init();
-        document.getElementById('loading').remove();
-    </script>
+
+  <!-- ── Menu overlay ── -->
+  <div id="menu-overlay" class="overlay">
+    <div class="menu-bg" id="menu-bg"></div>
+    <div class="menu-bg-dim"></div>
+    <div class="menu-content">
+      <div class="game-title">FLAPPY<br>DRAGON</div>
+      <button id="play-btn" class="btn-primary">▶ PLAY</button>
+      <div class="name-group">
+        <div class="name-label">YOUR NAME</div>
+        <input id="name-input" class="name-input" type="text"
+               placeholder="anonymous" maxlength="32" autocomplete="off">
+        <div class="name-note">leave empty → score not saved</div>
+      </div>
+      <button id="scores-btn" class="btn-secondary">🏆 SCORE TABLE</button>
+    </div>
+  </div>
+
+  <!-- ── Game Over overlay ── -->
+  <div id="gameover-overlay" class="overlay">
+    <div class="go-header">GAME OVER</div>
+    <div class="go-emoji">💀</div>
+    <div class="result-box">
+      <div class="result-name" id="go-player-name">ANONYMOUS</div>
+      <div class="result-score" id="go-score">0 pts</div>
+      <div class="result-pos" id="go-position" style="display:none">
+        Position <span></span>
+      </div>
+      <div class="result-anon" id="go-anon" style="display:none">
+        SCORE NOT SAVED
+      </div>
+    </div>
+    <table class="score-table" id="go-score-table"></table>
+    <div class="btn-row">
+      <button id="go-play-again-btn" class="btn-primary">▶ PLAY AGAIN</button>
+      <button id="go-menu-btn" class="btn-secondary">⌂ MENU</button>
+    </div>
+  </div>
+
+  <!-- ── Scores overlay ── -->
+  <div id="scores-overlay" class="overlay">
+    <div class="scores-title">🏆 SCORE TABLE</div>
+    <div class="scores-table-wrap">
+      <table class="score-table" id="scores-table"></table>
+    </div>
+    <br>
+    <button id="scores-back-btn" class="btn-secondary">← BACK</button>
+  </div>
+
+  <script type="module" src="app.js"></script>
 </body>
 </html>

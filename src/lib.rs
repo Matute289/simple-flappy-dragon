@@ -9,10 +9,12 @@ const FRAME_DURATION: f32 = 75.0;
 
 // --- Pure logic helpers (no bracket-lib context; tested via `cargo test`) ---
 
+#[allow(dead_code)]
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
 }
 
+#[allow(dead_code)]
 const SKY_COLORS: [(u8, u8, u8); 6] = [
     (255, 100,  50),  // 0 Dawn
     (255, 210, 120),  // 1 Morning
@@ -21,10 +23,14 @@ const SKY_COLORS: [(u8, u8, u8); 6] = [
     (220,  90,  40),  // 4 Dusk
     ( 10,  10,  55),  // 5 Night
 ];
+#[allow(dead_code)]
 const SKY_PHASE_MS: f32 = 30_000.0;
+#[allow(dead_code)]
 const SKY_TOTAL_MS: f32 = SKY_PHASE_MS * 6.0; // 180_000 ms = 3 minutes
+#[allow(dead_code)]
 const CLOUD_ACTIVATION_MS: f32 = SKY_TOTAL_MS; // clouds start after 1 full cycle
 
+#[allow(dead_code)]
 fn sky_bg_color_at(sky_time_ms: f32) -> RGB {
     let t = sky_time_ms % SKY_TOTAL_MS;
     let phase_f = t / SKY_PHASE_MS;
@@ -40,11 +46,13 @@ fn sky_bg_color_at(sky_time_ms: f32) -> RGB {
     )
 }
 
+#[allow(dead_code)]
 fn frame_duration_for(score: i32, classic: bool) -> f32 {
     if classic { return 75.0; }
     (75.0 - score as f32 * 1.5).max(30.0)
 }
 
+#[allow(dead_code)]
 fn gap_size_for(score: i32, classic: bool) -> i32 {
     if classic {
         i32::max(2, 20 - score)
@@ -53,6 +61,7 @@ fn gap_size_for(score: i32, classic: bool) -> i32 {
     }
 }
 
+#[allow(dead_code)]
 fn player_x_speed_for(score: i32, classic: bool) -> i32 {
     if classic { return 2; }
     2 + (score / 10)
@@ -314,6 +323,7 @@ mod tests {
     fn sky_color_at_night() {
         let c = sky_bg_color_at(SKY_PHASE_MS * 5.0); // start of night
         assert!((c.r - 10.0 / 255.0).abs() < 0.01);
+        assert!((c.g - 10.0 / 255.0).abs() < 0.01);
         assert!((c.b - 55.0 / 255.0).abs() < 0.01);
     }
 

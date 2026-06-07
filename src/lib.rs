@@ -5,6 +5,7 @@ use wasm_bindgen::prelude::*;
 
 const SCREEN_WIDTH: i32 = 80;
 const SCREEN_HEIGHT: i32 = 50;
+#[allow(dead_code)]
 const FRAME_DURATION: f32 = 75.0;
 
 // --- Pure logic helpers (no bracket-lib context; tested via `cargo test`) ---
@@ -82,31 +83,44 @@ use std::cell::Cell;
 thread_local! {
     static INITIALIZED: Cell<bool> = Cell::new(false);
     static RESTART_REQUESTED: Cell<bool> = Cell::new(false);
+    static PLAYER_Y: Cell<i32> = Cell::new(25);
+}
+
+/// Returns the player's current row (0–49) so JS can position the dragon overlay.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn get_player_y() -> i32 {
+    PLAYER_Y.with(|y| y.get())
 }
 
 /// Called by JS when the user clicks PLAY.
 /// First call initializes bracket-lib; subsequent calls restart the game.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
-pub fn start_game() {
+pub fn start_game(classic: bool) {
     console_error_panic_hook::set_once();
-
     let already_running = INITIALIZED.with(|i| i.get());
     if already_running {
         RESTART_REQUESTED.with(|r| r.set(true));
         return;
     }
     INITIALIZED.with(|i| i.set(true));
-    run().expect("Game initialization failed");
+    run(classic).expect("Game initialization failed");
 }
 
 // --- Core game ---
 
-pub fn run() -> BError {
+pub fn run(classic: bool) -> BError {
     let context = BTermBuilder::simple80x50()
         .with_title("Flappy Dragon")
         .build()?;
-    main_loop(context, State::new())
+    main_loop(context, State::new(classic))
+}
+
+struct Cloud {
+    x: f32,    // screen-space x (0..80), can be negative while drifting off-screen
+    y: i32,    // row in the terminal grid (3–9)
+    width: i32,
 }
 
 struct State {
@@ -115,40 +129,69 @@ struct State {
     obstacle: Obstacle,
     mode: GameMode,
     score: i32,
+    classic_mode: bool,
+    sky_time: f32,
+    weather_state: u8,
+    weather_timer: f32,
+    clouds: Vec<Cloud>,
+    rng: RandomNumberGenerator,
     #[cfg(target_arch = "wasm32")]
     game_over_reported: bool,
 }
 
 impl State {
-    fn new() -> Self {
+    fn new(classic: bool) -> Self {
         State {
             player: Player::new(5, 25),
             frame_time: 0.0,
-            obstacle: Obstacle::new(SCREEN_WIDTH, 0),
+            obstacle: Obstacle::new(SCREEN_WIDTH, 0, classic),
             mode: GameMode::Playing,
             score: 0,
+            classic_mode: classic,
+            sky_time: 0.0,
+            weather_state: 0,
+            weather_timer: 0.0,
+            clouds: Vec::new(),
+            rng: RandomNumberGenerator::new(),
             #[cfg(target_arch = "wasm32")]
             game_over_reported: false,
         }
     }
 
     fn play(&mut self, ctx: &mut BTerm) {
-        ctx.cls_bg(NAVY);
-        self.frame_time += ctx.frame_time_ms;
-        if self.frame_time > FRAME_DURATION {
-            self.frame_time = 0.0;
-            self.player.gravity_and_move();
+        if self.classic_mode {
+            ctx.cls_bg(NAVY);
+        } else {
+            self.sky_time += ctx.frame_time_ms;
+            let sky_color = sky_bg_color_at(self.sky_time);
+            ctx.cls_bg(sky_color);
+            self.update_weather(ctx.frame_time_ms);
+            self.draw_sky(ctx, sky_color);
+            self.draw_clouds(ctx, sky_color);
         }
+
+        self.frame_time += ctx.frame_time_ms;
+        if self.frame_time > frame_duration_for(self.score, self.classic_mode) {
+            self.frame_time = 0.0;
+            self.player.gravity_and_move(player_x_speed_for(self.score, self.classic_mode));
+        }
+
         if let Some(VirtualKeyCode::Space) = ctx.key {
             self.player.flap();
         }
-        self.player.render(ctx);
+
+        self.player.render(ctx, self.classic_mode);
         ctx.print(0, 0, "Press SPACE to flap.");
         ctx.print(0, 1, &format!("Score: {}", self.score));
-        self.obstacle.render(ctx, self.player.x);
+        self.obstacle.render(ctx, self.player.x, self.classic_mode);
+
         if self.player.x > self.obstacle.x {
             self.score += 1;
-            self.obstacle = Obstacle::new(self.player.x + SCREEN_WIDTH, self.score);
+            self.obstacle = Obstacle::new(
+                self.player.x + SCREEN_WIDTH,
+                self.score,
+                self.classic_mode,
+            );
         }
         if self.player.y > SCREEN_HEIGHT || self.obstacle.hit_obstacle(&self.player) {
             self.mode = GameMode::End;
@@ -164,6 +207,11 @@ impl State {
         // Clear canvas — HTML overlay appears on top
         ctx.cls();
     }
+
+    // Stub implementations — filled in later tasks
+    fn update_weather(&mut self, _delta_ms: f32) {}
+    fn draw_sky(&self, _ctx: &mut BTerm, _sky_color: RGB) {}
+    fn draw_clouds(&self, _ctx: &mut BTerm, _sky_color: RGB) {}
 }
 
 impl GameState for State {
@@ -180,7 +228,7 @@ impl GameState for State {
                 }
             });
             if restart {
-                *self = State::new();
+                *self = State::new(self.classic_mode);
                 return;
             }
         }
@@ -208,16 +256,21 @@ impl Player {
         Player { x, y, velocity: 0.0 }
     }
 
-    fn render(&mut self, ctx: &mut BTerm) {
-        ctx.set(0, self.y, YELLOW, BLACK, to_cp437('@'));
+    fn render(&mut self, ctx: &mut BTerm, classic_mode: bool) {
+        if classic_mode {
+            ctx.set(0, self.y, YELLOW, BLACK, to_cp437('@'));
+        }
+        // NEW mode: cell is left as sky background; JS dragon SVG covers the position
+        #[cfg(target_arch = "wasm32")]
+        PLAYER_Y.with(|y| y.set(self.y));
     }
 
-    fn gravity_and_move(&mut self) {
+    fn gravity_and_move(&mut self, x_speed: i32) {
         if self.velocity < 2.0 {
             self.velocity += 0.5;
         }
         self.y += self.velocity as i32;
-        self.x += 2;
+        self.x += x_speed;
         if self.y < 0 {
             self.y = 0;
         }
@@ -235,16 +288,16 @@ struct Obstacle {
 }
 
 impl Obstacle {
-    fn new(x: i32, score: i32) -> Self {
+    fn new(x: i32, score: i32, classic_mode: bool) -> Self {
         let mut random = RandomNumberGenerator::new();
         Obstacle {
             x,
             gap_y: random.range(10, 40),
-            size: i32::max(2, 20 - score),
+            size: gap_size_for(score, classic_mode),
         }
     }
 
-    fn render(&mut self, ctx: &mut BTerm, player_x: i32) {
+    fn render(&mut self, ctx: &mut BTerm, player_x: i32, _classic_mode: bool) {
         let screen_x = self.x - player_x;
         let half_size = self.size / 2;
         for y in 0..self.gap_y - half_size {

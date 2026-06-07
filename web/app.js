@@ -170,7 +170,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   playBtn.addEventListener('click', () => {
     currentPlayerName = document.getElementById('name-input').value.trim();
     hideAllOverlays();
-    start_game();
+    start_game(false);
   });
 
   document.getElementById('scores-btn').addEventListener('click', async () => {
@@ -179,7 +179,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('go-play-again-btn').addEventListener('click', () => {
     hideAllOverlays();
-    start_game();
+    start_game(false);
   });
 
   document.getElementById('go-menu-btn').addEventListener('click', () => {

@@ -141,10 +141,12 @@ struct State {
 
 impl State {
     fn new(classic: bool) -> Self {
+        let mut rng = RandomNumberGenerator::new();
+        let obstacle = Obstacle::new(SCREEN_WIDTH, 0, classic, &mut rng);
         State {
             player: Player::new(5, 25),
             frame_time: 0.0,
-            obstacle: Obstacle::new(SCREEN_WIDTH, 0, classic),
+            obstacle,
             mode: GameMode::Playing,
             score: 0,
             classic_mode: classic,
@@ -152,7 +154,7 @@ impl State {
             weather_state: 0,
             weather_timer: 0.0,
             clouds: Vec::new(),
-            rng: RandomNumberGenerator::new(),
+            rng,
             #[cfg(target_arch = "wasm32")]
             game_over_reported: false,
         }
@@ -191,6 +193,7 @@ impl State {
                 self.player.x + SCREEN_WIDTH,
                 self.score,
                 self.classic_mode,
+                &mut self.rng,
             );
         }
         if self.player.y > SCREEN_HEIGHT || self.obstacle.hit_obstacle(&self.player) {
@@ -288,11 +291,10 @@ struct Obstacle {
 }
 
 impl Obstacle {
-    fn new(x: i32, score: i32, classic_mode: bool) -> Self {
-        let mut random = RandomNumberGenerator::new();
+    fn new(x: i32, score: i32, classic_mode: bool, rng: &mut RandomNumberGenerator) -> Self {
         Obstacle {
             x,
-            gap_y: random.range(10, 40),
+            gap_y: rng.range(10, 40),
             size: gap_size_for(score, classic_mode),
         }
     }

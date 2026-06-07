@@ -219,6 +219,9 @@ impl State {
         let phase = phase_f as usize % 6;
         let phase_t = phase_f - phase as f32; // 0.0–1.0 within current phase
 
+        // weather_state: 0=Clear, 1=Light, 2=Cloudy, 3=Overcast, 4=Storm
+        // sun/moon hidden when weather_state >= 3; dimmed when weather_state == 2
+
         // ── Stars: visible in phases 5 (Night) and 0 (Dawn, fading out) ──
         const STARS: [(i32, i32); 10] = [
             (10, 2), (20, 4), (30, 2), (45, 5), (55, 3),
@@ -232,7 +235,7 @@ impl State {
         };
         if star_alpha > 0.05 {
             let v = (star_alpha * 200.0) as u8;
-            let star_color = RGB::from_u8(v, v, v / 2 + 30); // slight warm tint
+            let star_color = RGB::from_u8(v, v, (v as u32 * 2 / 3) as u8); // ~66% blue keeps warm tint at all brightness levels
             for (sx, sy) in &STARS {
                 ctx.set(*sx, *sy, star_color, sky_color, 250u16); // · dot
             }

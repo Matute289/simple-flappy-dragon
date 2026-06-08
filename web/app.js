@@ -1,7 +1,35 @@
-import init, { start_game } from './pkg/flappy_dragon.js';
+import init, { start_game, get_player_y } from './pkg/flappy_dragon.js';
 
 const API = '/api/scores';
 let currentPlayerName = '';
+let currentMode = 'new'; // 'classic' | 'new'
+let dragonLoopActive = false;
+let dragonAnimId = null;
+
+function startDragonLoop() {
+  dragonLoopActive = true;
+  const dragon = document.getElementById('dragon-sprite');
+  dragon.style.display = 'block';
+  const canvas = document.getElementById('canvas');
+
+  function loop() {
+    if (!dragonLoopActive) return;
+    const rect = canvas.getBoundingClientRect();
+    const cellH = rect.height / 50;
+    const cellW  = rect.width  / 80;
+    const py = get_player_y();
+    dragon.style.left = (rect.left + cellW * 0.5 - 24) + 'px';
+    dragon.style.top  = (rect.top  + py * cellH + cellH / 2 - 15) + 'px';
+    dragonAnimId = requestAnimationFrame(loop);
+  }
+  loop();
+}
+
+function stopDragonLoop() {
+  dragonLoopActive = false;
+  if (dragonAnimId) { cancelAnimationFrame(dragonAnimId); dragonAnimId = null; }
+  document.getElementById('dragon-sprite').style.display = 'none';
+}
 
 // ── API ──────────────────────────────────────────────
 
@@ -73,10 +101,17 @@ function hideAllOverlays() {
 }
 
 async function showGameOver(score) {
-  if (currentPlayerName) {
+  stopDragonLoop();
+
+  // Fetch first, then decide whether to save
+  const scores = await fetchScores();
+  const lastScore = scores.length > 0 ? scores[scores.length - 1].score : -1;
+  const shouldSave = !!(currentPlayerName && score > 0 && score > lastScore);
+
+  if (shouldSave) {
     await postScore(currentPlayerName, score);
   }
-  const scores = await fetchScores();
+  const finalScores = shouldSave ? await fetchScores() : scores;
 
   document.getElementById('go-player-name').textContent =
     currentPlayerName || 'ANONYMOUS';
@@ -84,8 +119,8 @@ async function showGameOver(score) {
 
   const posEl  = document.getElementById('go-position');
   const anonEl = document.getElementById('go-anon');
-  if (currentPlayerName) {
-    const rank = getPlayerRank(scores, currentPlayerName, score);
+  if (currentPlayerName && shouldSave) {
+    const rank = getPlayerRank(finalScores, currentPlayerName, score);
     posEl.innerHTML = rank
       ? `Position <span>#${rank}</span>`
       : `Position <span>unranked</span>`;
@@ -98,14 +133,14 @@ async function showGameOver(score) {
 
   renderScoreTable(
     document.getElementById('go-score-table'),
-    scores,
+    finalScores,
     currentPlayerName || null,
-    currentPlayerName ? score : null,
+    (currentPlayerName && shouldSave) ? score : null,
     5
   );
 
   document.getElementById('gameover-overlay').style.display = 'flex';
-  document.getElementById('menu-overlay').style.display = 'none';
+  document.getElementById('menu-overlay').style.display   = 'none';
   document.getElementById('scores-overlay').style.display = 'none';
 }
 
@@ -162,15 +197,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   initMenuBackground();
   showMenu();
 
-  const playBtn = document.getElementById('play-btn');
-  playBtn.disabled = true;
-  await init();
-  playBtn.disabled = false;
+  const classicBtn = document.getElementById('play-classic-btn');
+  const newBtn     = document.getElementById('play-new-btn');
+  classicBtn.disabled = true;
+  newBtn.disabled     = true;
 
-  playBtn.addEventListener('click', () => {
+  await init();
+
+  classicBtn.disabled = false;
+  newBtn.disabled     = false;
+
+  classicBtn.addEventListener('click', () => {
     currentPlayerName = document.getElementById('name-input').value.trim();
+    currentMode = 'classic';
+    stopDragonLoop();
+    hideAllOverlays();
+    start_game(true);
+  });
+
+  newBtn.addEventListener('click', () => {
+    currentPlayerName = document.getElementById('name-input').value.trim();
+    currentMode = 'new';
     hideAllOverlays();
     start_game(false);
+    startDragonLoop();
   });
 
   document.getElementById('scores-btn').addEventListener('click', async () => {
@@ -179,10 +229,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('go-play-again-btn').addEventListener('click', () => {
     hideAllOverlays();
-    start_game(false);
+    const isClassic = (currentMode === 'classic');
+    start_game(isClassic);
+    if (!isClassic) startDragonLoop();
   });
 
   document.getElementById('go-menu-btn').addEventListener('click', () => {
+    stopDragonLoop();
     showMenu();
   });
 

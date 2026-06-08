@@ -50,7 +50,7 @@ fn sky_bg_color_at(sky_time_ms: f32) -> RGB {
 #[allow(dead_code)]
 fn frame_duration_for(score: i32, classic: bool) -> f32 {
     if classic { return 75.0; }
-    (75.0 - score as f32 * 1.5).max(30.0)
+    (75.0 - score as f32 * 0.5).max(40.0)
 }
 
 #[allow(dead_code)]
@@ -63,9 +63,9 @@ fn gap_size_for(score: i32, classic: bool) -> i32 {
 }
 
 #[allow(dead_code)]
-fn player_x_speed_for(score: i32, classic: bool) -> i32 {
+fn player_x_speed_for(_score: i32, classic: bool) -> i32 {
     if classic { return 2; }
-    2 + (score / 10)
+    2 // speed controlled only by frame_duration — no sudden x_speed jumps
 }
 
 // --- WASM-only: JS import and restart flag ---
@@ -172,6 +172,7 @@ impl State {
             self.update_weather(ctx.frame_time_ms);
             self.draw_sky(ctx, sky_color);
             self.draw_clouds(ctx, sky_color);
+            self.draw_ground(ctx);
         }
 
         self.frame_time += ctx.frame_time_ms;
@@ -185,8 +186,18 @@ impl State {
         }
 
         self.player.render(ctx, self.classic_mode);
-        ctx.print(0, 0, "Press SPACE to flap.");
-        ctx.print(0, 1, &format!("Score: {}", self.score));
+        if self.classic_mode {
+            ctx.print(0, 0, "Press SPACE to flap.");
+            ctx.print(0, 1, &format!("Score: {}", self.score));
+        } else {
+            // Hint in top-left (small, dim)
+            ctx.print_color(0, 0, RGB::from_u8(180, 180, 180), RGB::from_u8(0, 0, 0), " SPACE ");
+            // Score box in top-right
+            let score_str = format!("{}", self.score);
+            let box_x = SCREEN_WIDTH - score_str.len() as i32 - 4;
+            ctx.draw_box(box_x, 0, score_str.len() as i32 + 3, 2, RGB::named(YELLOW), RGB::from_u8(0, 0, 0));
+            ctx.print_color(box_x + 2, 1, RGB::named(YELLOW), RGB::from_u8(0, 0, 0), &score_str);
+        }
         self.obstacle.render(ctx, self.player.x, self.classic_mode);
 
         if self.player.x > self.obstacle.x {
@@ -282,66 +293,89 @@ impl State {
     }
 
     fn draw_sky(&self, ctx: &mut BTerm, sky_color: RGB) {
+        // weather_state: 0=Clear, 1=Light, 2=Cloudy, 3=Overcast, 4=Storm
+        // sun/moon hidden when weather_state >= 3; dimmed when weather_state == 2
         let t = self.sky_time % SKY_TOTAL_MS;
         let phase_f = t / SKY_PHASE_MS;
         let phase = phase_f as usize % 6;
-        let phase_t = phase_f - phase as f32; // 0.0–1.0 within current phase
+        let phase_t = phase_f - phase as f32;
 
-        // weather_state: 0=Clear, 1=Light, 2=Cloudy, 3=Overcast, 4=Storm
-        // sun/moon hidden when weather_state >= 3; dimmed when weather_state == 2
-
-        // ── Stars: visible in phases 5 (Night) and 0 (Dawn, fading out) ──
+        // ── Stars: phase 5 (full), phase 0 (fade out), phase 4 (fade in) ──
         const STARS: [(i32, i32); 10] = [
             (10, 2), (20, 4), (30, 2), (45, 5), (55, 3),
             (63, 6), (70, 2), (15, 7), (38, 8), (60, 7),
         ];
         let star_alpha: f32 = match phase {
             5 => 1.0,
-            0 => 1.0 - phase_t, // fade out as dawn brightens
-            4 => phase_t,        // fade in as dusk darkens
+            0 => 1.0 - phase_t,
+            4 => phase_t,
             _ => 0.0,
         };
         if star_alpha > 0.05 {
             let v = (star_alpha * 200.0) as u8;
-            let star_color = RGB::from_u8(v, v, (v as u32 * 2 / 3) as u8); // ~66% blue keeps warm tint at all brightness levels
+            let star_color = RGB::from_u8(v, v, (v as u32 * 2 / 3) as u8);
             for (sx, sy) in &STARS {
-                ctx.set(*sx, *sy, star_color, sky_color, 250u16); // · dot
+                ctx.set(*sx, *sy, star_color, sky_color, 250u16); // ·
             }
         }
 
-        // ── Sun: phases 0–4 (Dawn through Dusk) ──
-        // Sun x sweeps 5→74 over 5 phases (150_000 ms)
+        // ── Sun: phases 0–4 only. Enters left at dawn, exits right at end of dusk ──
+        // arc span: 5 phases × 30s = 150s. x sweeps 5→74.
+        // At dawn start (t=0): sun_x=5. At dusk end (t=150000): sun_x=74.
+        // NEVER visible during phase 5 → no overlap with moon possible.
         if phase < 5 && self.weather_state < 3 {
-            let sun_progress = (t / (SKY_PHASE_MS * 5.0)).min(1.0);
-            let sun_x = (5.0 + sun_progress * 69.0) as i32;
-            let sun_color = if self.weather_state == 2 {
-                RGB::from_u8(160, 140, 0)
+            let sun_t = (t / (SKY_PHASE_MS * 5.0)).min(1.0);
+            let sun_x = (5.0 + sun_t * 69.0) as i32;
+            let (sun_main, sun_ray) = if self.weather_state == 2 {
+                (RGB::from_u8(160, 140, 0), RGB::from_u8(100, 90, 0))
             } else {
-                RGB::named(YELLOW)
+                (RGB::named(YELLOW), RGB::from_u8(200, 190, 60))
             };
-            ctx.set(sun_x, 3, sun_color, sky_color, 15u16); // ☼
+            // 5-cell cross: left/right rays + top/bottom dots + center ☼
+            if sun_x > 0 { ctx.set(sun_x - 1, 3, sun_ray, sky_color, 196u16); } // ─
+            ctx.set(sun_x, 2, sun_ray, sky_color, 250u16); // · above
+            ctx.set(sun_x, 3, sun_main, sky_color, 15u16); // ☼ center
+            ctx.set(sun_x, 4, sun_ray, sky_color, 250u16); // · below
+            if sun_x + 1 < SCREEN_WIDTH { ctx.set(sun_x + 1, 3, sun_ray, sky_color, 196u16); } // ─
         }
 
-        // ── Moon: phases 4–5–0 (Dusk through Night into next Dawn) ──
-        // Moon visible during dusk (phase 4), night (phase 5), dawn (phase 0 of next cycle)
-        let moon_visible = phase >= 4 || phase == 0;
+        // ── Moon: phases 5 and 0 only. Enters left at night start, exits right at dawn end ──
+        // arc span: 2 phases × 30s = 60s. x sweeps 5→74.
+        // During dawn (phase 0): moon at x≈39-74, sun at x≈5-19 → NO OVERLAP.
+        // During dusk (phase 4): moon NOT visible → no overlap with exiting sun.
+        let moon_visible = phase == 5 || phase == 0;
         if moon_visible && self.weather_state < 3 {
-            let moon_arc_start = SKY_PHASE_MS * 4.0;
-            let moon_elapsed = if t >= moon_arc_start {
-                t - moon_arc_start
+            let moon_elapsed = if phase == 5 {
+                phase_t * SKY_PHASE_MS
             } else {
-                (SKY_TOTAL_MS - moon_arc_start) + t // wrapped past midnight
+                SKY_PHASE_MS + phase_t * SKY_PHASE_MS
             };
-            let moon_t = (moon_elapsed / (SKY_PHASE_MS * 3.0)).min(1.0);
+            let moon_t = (moon_elapsed / (SKY_PHASE_MS * 2.0)).min(1.0);
             let moon_x = (5.0 + moon_t * 69.0) as i32;
-            let moon_color = if self.weather_state == 2 {
-                RGB::from_u8(150, 150, 150)
+            let (moon_main, moon_dim) = if self.weather_state == 2 {
+                (RGB::from_u8(150, 150, 150), RGB::from_u8(100, 100, 100))
             } else {
-                RGB::named(WHITE)
+                (RGB::named(WHITE), RGB::from_u8(180, 180, 200))
             };
-            ctx.set(moon_x, 5, moon_color, sky_color, 9u16); // ○
+            // Moon: 2-wide circle + dot above
+            ctx.set(moon_x, 3, moon_dim, sky_color, 250u16); // · above
+            ctx.set(moon_x, 4, moon_main, sky_color, 9u16); // ○ left
+            if moon_x + 1 < SCREEN_WIDTH {
+                ctx.set(moon_x + 1, 4, moon_dim, sky_color, 9u16); // ○ right (dimmer)
+            }
         }
     }
+    fn draw_ground(&self, ctx: &mut BTerm) {
+        let (grass_color, earth_color) = match self.weather_state {
+            4 => (RGB::from_u8(20, 80, 15), RGB::from_u8(15, 55, 10)), // storm: darker
+            _ => (RGB::from_u8(40, 130, 25), RGB::from_u8(25, 85, 15)), // normal: green
+        };
+        for x in 0..SCREEN_WIDTH {
+            ctx.set(x, SCREEN_HEIGHT - 2, grass_color, grass_color, 178u16); // ▓ grass
+            ctx.set(x, SCREEN_HEIGHT - 1, earth_color, earth_color, 219u16); // █ earth
+        }
+    }
+
     fn draw_clouds(&self, ctx: &mut BTerm, sky_color: RGB) {
         'cloud_loop: for cloud in &self.clouds {
             let (cloud_glyph, cloud_fg): (u16, RGB) = match self.weather_state {
@@ -534,8 +568,8 @@ mod tests {
     #[test]
     fn frame_duration_new_decreases_with_score() {
         assert_eq!(frame_duration_for(0, false), 75.0);
-        assert_eq!(frame_duration_for(30, false), 30.0);
-        assert_eq!(frame_duration_for(100, false), 30.0); // capped
+        assert_eq!(frame_duration_for(70, false), 40.0); // cap reached at 70, not 30
+        assert_eq!(frame_duration_for(100, false), 40.0);
     }
 
     #[test]
@@ -561,11 +595,11 @@ mod tests {
     }
 
     #[test]
-    fn player_x_speed_new_increases_every_10() {
+    fn player_x_speed_new_is_fixed() { // rename from player_x_speed_new_increases_every_10
         assert_eq!(player_x_speed_for(0, false), 2);
         assert_eq!(player_x_speed_for(9, false), 2);
-        assert_eq!(player_x_speed_for(10, false), 3);
-        assert_eq!(player_x_speed_for(20, false), 4);
+        assert_eq!(player_x_speed_for(10, false), 2); // no longer increases at score 10
+        assert_eq!(player_x_speed_for(20, false), 2);
     }
 
     #[test]

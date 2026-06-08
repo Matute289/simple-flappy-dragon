@@ -190,6 +190,7 @@ impl State {
             let bg_color = self.draw_background(ctx);
             if self.score < PHASE_ATMO_END {
                 self.sky_time += ctx.frame_time_ms;
+                self.draw_sky(ctx, bg_color);       // sun, moon, stars on top of city/sky bg
                 self.update_weather(ctx.frame_time_ms);
                 self.draw_clouds(ctx, bg_color);
             }
@@ -327,7 +328,6 @@ impl State {
         }
     }
 
-    #[allow(dead_code)]
     fn draw_sky(&self, ctx: &mut BTerm, sky_color: RGB) {
         // weather_state: 0=Clear, 1=Light, 2=Cloudy, 3=Overcast, 4=Storm
         // sun/moon hidden when weather_state >= 3; dimmed when weather_state == 2
@@ -469,7 +469,7 @@ impl State {
     }
 
     fn draw_city(&self, ctx: &mut BTerm, t: f32) -> RGB {
-        let sky = lerp_rgb(RGB::from_u8(120, 180, 240), RGB::from_u8(70, 130, 200), t);
+        let sky = sky_bg_color_at(self.sky_time);
         ctx.cls_bg(sky);
         let horizon_y = (38.0 + t * 15.0) as i32;
         let scale = (1.0 - t * 1.15_f32).max(0.0);
@@ -525,7 +525,7 @@ impl State {
     }
 
     fn draw_high_sky(&self, ctx: &mut BTerm, t: f32) -> RGB {
-        let sky = lerp_rgb(RGB::from_u8(70, 130, 200), RGB::from_u8(20, 50, 120), t);
+        let sky = sky_bg_color_at(self.sky_time);
         ctx.cls_bg(sky);
         // Fading city silhouette at bottom
         if t < 0.4 {
@@ -540,7 +540,9 @@ impl State {
     }
 
     fn draw_atmosphere(&self, ctx: &mut BTerm, t: f32) -> RGB {
-        let sky = lerp_rgb(RGB::from_u8(20, 50, 120), RGB::from_u8(3, 5, 20), t);
+        let day_night = sky_bg_color_at(self.sky_time);
+        let space = RGB::from_u8(3, 5, 20);
+        let sky = lerp_rgb(day_night, space, t);
         ctx.cls_bg(sky);
         // Curved horizon at bottom
         if t < 0.6 {

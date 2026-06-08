@@ -8,6 +8,18 @@ const SCREEN_HEIGHT: i32 = 50;
 #[allow(dead_code)]
 const FRAME_DURATION: f32 = 75.0;
 
+// Universe journey phase thresholds (pipes passed)
+const PHASE_CITY_END: i32  = 25;   // city zooms out and disappears
+const PHASE_SKY_END: i32   = 100;  // high atmosphere / stratosphere
+const PHASE_ATMO_END: i32  = 200;  // entering space
+const PHASE_EARTH_END: i32 = 300;  // Earth shrinks away
+const PHASE_SOLAR_END: i32 = 1300; // past Pluto (through solar system)
+const PHASE_OORT_END: i32  = 1400; // WIN: past Oort cloud!
+
+fn lerp_rgb(a: RGB, b: RGB, t: f32) -> RGB {
+    RGB::from_f32(lerp(a.r, b.r, t), lerp(a.g, b.g, t), lerp(a.b, b.b, t))
+}
+
 // --- Pure logic helpers (no bracket-lib context; tested via `cargo test`) ---
 
 #[allow(dead_code)]
@@ -74,6 +86,7 @@ fn player_x_speed_for(_score: i32, classic: bool) -> i32 {
 #[wasm_bindgen]
 extern "C" {
     fn on_game_over(score: u32);
+    fn on_game_win(score: u32);
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -139,6 +152,8 @@ struct State {
     rng: RandomNumberGenerator,
     #[cfg(target_arch = "wasm32")]
     game_over_reported: bool,
+    #[cfg(target_arch = "wasm32")]
+    win_reported: bool,
 }
 
 impl State {
@@ -159,6 +174,8 @@ impl State {
             rng,
             #[cfg(target_arch = "wasm32")]
             game_over_reported: false,
+            #[cfg(target_arch = "wasm32")]
+            win_reported: false,
         }
     }
 
@@ -166,13 +183,16 @@ impl State {
         if self.classic_mode {
             ctx.cls_bg(NAVY);
         } else {
-            self.sky_time += ctx.frame_time_ms;
-            let sky_color = sky_bg_color_at(self.sky_time);
-            ctx.cls_bg(sky_color);
-            self.update_weather(ctx.frame_time_ms);
-            self.draw_sky(ctx, sky_color);
-            self.draw_clouds(ctx, sky_color);
-            self.draw_ground(ctx);
+            if self.score >= PHASE_OORT_END {
+                self.mode = GameMode::Win;
+                return;
+            }
+            let bg_color = self.draw_background(ctx);
+            if self.score < PHASE_ATMO_END {
+                self.sky_time += ctx.frame_time_ms;
+                self.update_weather(ctx.frame_time_ms);
+                self.draw_clouds(ctx, bg_color);
+            }
         }
 
         self.frame_time += ctx.frame_time_ms;
@@ -197,6 +217,21 @@ impl State {
             let box_x = SCREEN_WIDTH - score_str.len() as i32 - 4;
             ctx.draw_box(box_x, 0, score_str.len() as i32 + 3, 2, RGB::named(YELLOW), RGB::from_u8(0, 0, 0));
             ctx.print_color(box_x + 2, 1, RGB::named(YELLOW), RGB::from_u8(0, 0, 0), &score_str);
+            // Phase label
+            let phase_label = match self.score {
+                s if s < PHASE_CITY_END  => "Ciudad",
+                s if s < PHASE_SKY_END   => "Estratosfera",
+                s if s < PHASE_ATMO_END  => "Atmosfera",
+                s if s < PHASE_EARTH_END => "Orbita",
+                s if s < 400             => "Marte",
+                s if s < 620             => "Jupiter",
+                s if s < 820             => "Saturno",
+                s if s < 1020            => "Urano",
+                s if s < 1200            => "Neptuno",
+                s if s < PHASE_SOLAR_END => "Pluton",
+                _                        => "Nube de Oort",
+            };
+            ctx.print_color(1, 1, RGB::from_u8(150, 150, 200), RGB::from_u8(0, 0, 0), phase_label);
         }
         self.obstacle.render(ctx, self.player.x, self.classic_mode);
 
@@ -225,8 +260,8 @@ impl State {
     }
 
     fn update_weather(&mut self, delta_ms: f32) {
-        // Only active after 1 full sky cycle
-        if self.sky_time < CLOUD_ACTIVATION_MS {
+        // Clouds only in city/sky phases; start after 5 pipes
+        if self.score < 5 || self.score >= PHASE_ATMO_END {
             return;
         }
 
@@ -292,6 +327,7 @@ impl State {
         }
     }
 
+    #[allow(dead_code)]
     fn draw_sky(&self, ctx: &mut BTerm, sky_color: RGB) {
         // weather_state: 0=Clear, 1=Light, 2=Cloudy, 3=Overcast, 4=Storm
         // sun/moon hidden when weather_state >= 3; dimmed when weather_state == 2
@@ -365,6 +401,7 @@ impl State {
             }
         }
     }
+    #[allow(dead_code)]
     fn draw_ground(&self, ctx: &mut BTerm) {
         let (grass_color, earth_color) = match self.weather_state {
             4 => (RGB::from_u8(20, 80, 15), RGB::from_u8(15, 55, 10)), // storm: darker
@@ -408,6 +445,380 @@ impl State {
             }
         }
     }
+
+    fn draw_background(&self, ctx: &mut BTerm) -> RGB {
+        let s = self.score;
+        if s < PHASE_CITY_END {
+            self.draw_city(ctx, s as f32 / PHASE_CITY_END as f32)
+        } else if s < PHASE_SKY_END {
+            let t = (s - PHASE_CITY_END) as f32 / (PHASE_SKY_END - PHASE_CITY_END) as f32;
+            self.draw_high_sky(ctx, t)
+        } else if s < PHASE_ATMO_END {
+            let t = (s - PHASE_SKY_END) as f32 / (PHASE_ATMO_END - PHASE_SKY_END) as f32;
+            self.draw_atmosphere(ctx, t)
+        } else if s < PHASE_EARTH_END {
+            let t = (s - PHASE_ATMO_END) as f32 / (PHASE_EARTH_END - PHASE_ATMO_END) as f32;
+            self.draw_earth_phase(ctx, t)
+        } else if s < PHASE_SOLAR_END {
+            let t = (s - PHASE_EARTH_END) as f32 / (PHASE_SOLAR_END - PHASE_EARTH_END) as f32;
+            self.draw_solar_system(ctx, t)
+        } else {
+            let t = (s - PHASE_SOLAR_END) as f32 / (PHASE_OORT_END - PHASE_SOLAR_END) as f32;
+            self.draw_oort_cloud(ctx, t)
+        }
+    }
+
+    fn draw_city(&self, ctx: &mut BTerm, t: f32) -> RGB {
+        let sky = lerp_rgb(RGB::from_u8(120, 180, 240), RGB::from_u8(70, 130, 200), t);
+        ctx.cls_bg(sky);
+        let horizon_y = (38.0 + t * 15.0) as i32;
+        let scale = (1.0 - t * 1.15_f32).max(0.0);
+        let buildings: &[(i32, i32, f32)] = &[
+            (0,6,0.55),(6,4,0.40),(10,8,0.75),(18,3,0.35),(21,7,0.65),
+            (28,4,0.45),(32,5,0.80),(37,6,0.60),(43,4,0.50),(47,7,0.70),
+            (54,3,0.40),(57,8,0.85),(65,5,0.55),(70,4,0.65),(74,6,0.50),
+        ];
+        for &(bx, bw, bh) in buildings {
+            let max_h = (bh * 16.0 * scale) as i32;
+            if max_h <= 0 { continue; }
+            let top_y = horizon_y - max_h;
+            if top_y >= SCREEN_HEIGHT { continue; }
+            let wall = RGB::from_u8(70, 70, 85);
+            let edge = RGB::from_u8(55, 55, 68);
+            let w_on = RGB::from_u8(240, 210, 80);
+            let w_off= RGB::from_u8(25, 25, 45);
+            for y in top_y.max(0)..horizon_y.min(SCREEN_HEIGHT) {
+                for x in bx..(bx+bw).min(SCREEN_WIDTH) {
+                    let c = if x==bx || x==bx+bw-1 { edge } else { wall };
+                    ctx.set(x, y, c, c, 219u16);
+                }
+            }
+            // windows
+            let mut wy = top_y + 1;
+            while wy < horizon_y - 1 {
+                let mut wx = bx + 1;
+                while wx < bx + bw - 1 {
+                    let lit = ((wx*7 + wy*13 + bx*3) % 5) != 0;
+                    let wc = if lit { w_on } else { w_off };
+                    if wy >= 0 && wy < SCREEN_HEIGHT && wx < SCREEN_WIDTH {
+                        ctx.set(wx, wy, wc, wall, 250u16);
+                    }
+                    wx += 2;
+                }
+                wy += 2;
+            }
+            // rooftop
+            if top_y >= 0 && top_y < SCREEN_HEIGHT {
+                for x in bx..(bx+bw).min(SCREEN_WIDTH) {
+                    ctx.set(x, top_y, RGB::from_u8(90,90,105), edge, 223u16);
+                }
+            }
+        }
+        // ground
+        for y in horizon_y.max(0)..SCREEN_HEIGHT {
+            for x in 0..SCREEN_WIDTH {
+                let c = if y == horizon_y { RGB::from_u8(55,55,60) } else { RGB::from_u8(35,110,25) };
+                ctx.set(x, y, c, c, 219u16);
+            }
+        }
+        sky
+    }
+
+    fn draw_high_sky(&self, ctx: &mut BTerm, t: f32) -> RGB {
+        let sky = lerp_rgb(RGB::from_u8(70, 130, 200), RGB::from_u8(20, 50, 120), t);
+        ctx.cls_bg(sky);
+        // Fading city silhouette at bottom
+        if t < 0.4 {
+            let fade = 1.0 - t / 0.4;
+            let c = RGB::from_u8((50.0*fade) as u8, (50.0*fade) as u8, (60.0*fade) as u8);
+            for x in 0..SCREEN_WIDTH {
+                ctx.set(x, SCREEN_HEIGHT-1, c, c, 223u16);
+                if t < 0.2 { ctx.set(x, SCREEN_HEIGHT-2, c, c, 220u16); }
+            }
+        }
+        sky
+    }
+
+    fn draw_atmosphere(&self, ctx: &mut BTerm, t: f32) -> RGB {
+        let sky = lerp_rgb(RGB::from_u8(20, 50, 120), RGB::from_u8(3, 5, 20), t);
+        ctx.cls_bg(sky);
+        // Curved horizon at bottom
+        if t < 0.6 {
+            let fade = 1.0 - t / 0.6;
+            let atmo = RGB::from_u8((60.0*fade) as u8, (120.0*fade) as u8, (220.0*fade) as u8);
+            for x in 0..SCREEN_WIDTH {
+                let dx = (x - 40) as f32 / 40.0;
+                let curve_h = (5.0 * fade * (1.0 - dx*dx).max(0.0)) as i32;
+                let y = SCREEN_HEIGHT - 2 - curve_h;
+                if y >= 0 && y < SCREEN_HEIGHT { ctx.set(x, y, atmo, sky, 196u16); }
+            }
+        }
+        if t > 0.3 {
+            self.draw_space_stars(ctx, sky, (t - 0.3) / 0.7);
+        }
+        sky
+    }
+
+    fn draw_earth_phase(&self, ctx: &mut BTerm, t: f32) -> RGB {
+        let bg = RGB::from_u8(3, 5, 20);
+        ctx.cls_bg(bg);
+        self.draw_space_stars(ctx, bg, 1.0);
+        let r = ((1.0 - t) * 13.0) as i32;
+        if r > 0 { self.draw_planet_earth(ctx, bg, 62, 22, r); }
+        bg
+    }
+
+    fn draw_planet_earth(&self, ctx: &mut BTerm, bg: RGB, cx: i32, cy: i32, r: i32) {
+        if r <= 0 { return; }
+        let land  = RGB::from_u8(34, 139, 34);
+        let ocean = RGB::from_u8(30, 80, 180);
+        let ice   = RGB::from_u8(220, 235, 250);
+        let shade = RGB::from_u8(8, 25, 70);
+        for dy in -r..=r {
+            let rw = ((r*r - dy*dy) as f32).max(0.0).sqrt() as i32;
+            for dx in -rw..=rw {
+                let x = cx+dx; let y = cy+dy;
+                if x<0||x>=SCREEN_WIDTH||y<0||y>=SCREEN_HEIGHT { continue; }
+                let dtop = (dy + r) as f32 / (2*r) as f32;
+                let hash = ((dx + dy*7 + cx).abs()) % 13;
+                let c = if dtop < 0.12 || dtop > 0.88 { ice }
+                        else if dx > rw*2/3 { shade }
+                        else if hash < 5 { land } else { ocean };
+                ctx.set(x, y, c, c, if r>5 {178u16} else {219u16});
+            }
+        }
+        // atmosphere glow
+        let r2 = r+1;
+        for dy in -r2..=r2 {
+            let rw2 = ((r2*r2 - dy*dy) as f32).max(0.0).sqrt() as i32;
+            for dx in &[-rw2, rw2] {
+                let x = cx+dx; let y = cy+dy;
+                if x<0||x>=SCREEN_WIDTH||y<0||y>=SCREEN_HEIGHT { continue; }
+                if dx*dx + dy*dy > r*r {
+                    ctx.set(x, y, RGB::from_u8(80,140,220), bg, 250u16);
+                }
+            }
+        }
+    }
+
+    fn draw_solar_system(&self, ctx: &mut BTerm, t: f32) -> RGB {
+        let bg = RGB::from_u8(2, 2, 10);
+        ctx.cls_bg(bg);
+        self.draw_space_stars(ctx, bg, 1.0);
+        // Sun (always visible, shrinks and moves left)
+        let sun_x = (72.0 - t * 25.0) as i32;
+        let sun_r = (6.0 - t * 3.5).max(1.0) as i32;
+        self.draw_sun_glow(ctx, bg, sun_x, 8, sun_r);
+        // Mars: t=0.0–0.1 (score 300–430)
+        if t < 0.13 {
+            let mt = t / 0.13;
+            let mx = (75.0 - mt * 90.0) as i32;
+            if mx > -6 && mx < SCREEN_WIDTH+6 {
+                let mr = (4.0 - mt*2.0).max(1.0) as i32;
+                self.draw_planet_simple(ctx, bg, mx, 28, mr, RGB::from_u8(180,80,40), RGB::from_u8(120,50,25));
+                if mt < 0.4 { ctx.print_color(mx-2, 28-mr-1, RGB::from_u8(200,120,100), bg, "Marte"); }
+            }
+        }
+        // Jupiter: t=0.1–0.4 (score 430–820)
+        if t >= 0.09 && t < 0.42 {
+            let jt = (t-0.09)/0.33;
+            let jx = (76.0 - jt*95.0) as i32;
+            if jx > -18 && jx < SCREEN_WIDTH+18 {
+                let jr = (10.0 - jt*4.0).max(2.0) as i32;
+                self.draw_planet_jupiter(ctx, bg, jx, 30, jr);
+                if jt < 0.35 { ctx.print_color(jx-3, 30-jr-1, RGB::from_u8(210,170,120), bg, "Jupiter"); }
+            }
+        }
+        // Saturn: t=0.28–0.58 (score 664–1054)
+        if t >= 0.27 && t < 0.60 {
+            let st = (t-0.27)/0.33;
+            let sx = (78.0 - st*100.0) as i32;
+            if sx > -22 && sx < SCREEN_WIDTH+22 {
+                let sr = (8.0 - st*3.0).max(2.0) as i32;
+                self.draw_planet_saturn(ctx, bg, sx, 22, sr);
+                if st < 0.3 { ctx.print_color(sx-3, 22-sr-2, RGB::from_u8(220,200,140), bg, "Saturno"); }
+            }
+        }
+        // Uranus: t=0.48–0.74
+        if t >= 0.47 && t < 0.76 {
+            let ut = (t-0.47)/0.29;
+            let ux = (74.0 - ut*88.0) as i32;
+            if ux > -10 && ux < SCREEN_WIDTH+10 {
+                let ur = (5.0 - ut*2.0).max(1.0) as i32;
+                self.draw_planet_simple(ctx, bg, ux, 18, ur, RGB::from_u8(100,220,220), RGB::from_u8(60,160,170));
+                if ut < 0.3 { ctx.print_color(ux-2, 18-ur-1, RGB::from_u8(150,230,230), bg, "Urano"); }
+            }
+        }
+        // Neptune: t=0.68–0.90
+        if t >= 0.67 && t < 0.92 {
+            let nt = (t-0.67)/0.25;
+            let nx = (72.0 - nt*82.0) as i32;
+            if nx > -8 && nx < SCREEN_WIDTH+8 {
+                let nr = (4.0 - nt*1.5).max(1.0) as i32;
+                self.draw_planet_simple(ctx, bg, nx, 25, nr, RGB::from_u8(50,80,210), RGB::from_u8(30,55,160));
+                if nt < 0.3 { ctx.print_color(nx-2, 25-nr-1, RGB::from_u8(100,130,240), bg, "Neptuno"); }
+            }
+        }
+        // Pluto: t=0.88–1.0
+        if t >= 0.87 {
+            let pt = (t-0.87)/0.13;
+            let px = (70.0 - pt*65.0) as i32;
+            if px > 0 && px < SCREEN_WIDTH {
+                ctx.set(px, 20, RGB::from_u8(200,185,165), bg, 9u16);
+                if pt < 0.5 { ctx.print_color(px-2, 19, RGB::from_u8(180,165,145), bg, "Pluton"); }
+            }
+        }
+        bg
+    }
+
+    fn draw_sun_glow(&self, ctx: &mut BTerm, bg: RGB, cx: i32, cy: i32, r: i32) {
+        if r <= 0 { return; }
+        let core  = RGB::from_u8(255, 250, 180);
+        let outer = RGB::from_u8(255, 200, 50);
+        let corona= RGB::from_u8(255, 140, 20);
+        for dy in -r..=r {
+            let rw = ((r*r - dy*dy) as f32).max(0.0).sqrt() as i32;
+            for dx in -rw..=rw {
+                let x=cx+dx; let y=cy+dy;
+                if x<0||x>=SCREEN_WIDTH||y<0||y>=SCREEN_HEIGHT { continue; }
+                let c = if dx*dx+dy*dy < r*r*2/3 { core } else { outer };
+                ctx.set(x, y, c, c, 219u16);
+            }
+        }
+        let r2 = r+2;
+        for dy in -r2..=r2 {
+            let rw2 = ((r2*r2-dy*dy) as f32).max(0.0).sqrt() as i32;
+            for dx in -rw2..=rw2 {
+                let x=cx+dx; let y=cy+dy;
+                if x<0||x>=SCREEN_WIDTH||y<0||y>=SCREEN_HEIGHT { continue; }
+                if dx*dx+dy*dy > r*r && dx*dx+dy*dy <= r2*r2 {
+                    ctx.set(x, y, corona, bg, 250u16);
+                }
+            }
+        }
+    }
+
+    fn draw_planet_simple(&self, ctx: &mut BTerm, _bg: RGB, cx: i32, cy: i32, r: i32, main_c: RGB, dark_c: RGB) {
+        if r <= 0 { return; }
+        for dy in -r..=r {
+            let rw = ((r*r-dy*dy) as f32).max(0.0).sqrt() as i32;
+            for dx in -rw..=rw {
+                let x=cx+dx; let y=cy+dy;
+                if x<0||x>=SCREEN_WIDTH||y<0||y>=SCREEN_HEIGHT { continue; }
+                ctx.set(x, y, if dx > rw/2 { dark_c } else { main_c }, if dx > rw/2 { dark_c } else { main_c }, 219u16);
+            }
+        }
+    }
+
+    fn draw_planet_jupiter(&self, ctx: &mut BTerm, _bg: RGB, cx: i32, cy: i32, r: i32) {
+        if r <= 0 { return; }
+        let bands: &[RGB] = &[
+            RGB::from_u8(200,150,100), RGB::from_u8(155,105,65),
+            RGB::from_u8(220,178,128), RGB::from_u8(190,138,92),
+            RGB::from_u8(212,163,108),
+        ];
+        for dy in -r..=r {
+            let rw = ((r*r-dy*dy) as f32).max(0.0).sqrt() as i32;
+            let bi = ((dy+r) as usize * bands.len()) / (2*r as usize+1);
+            let bc = bands[bi.min(bands.len()-1)];
+            let dark = RGB::from_f32(bc.r*0.65, bc.g*0.65, bc.b*0.65);
+            for dx in -rw..=rw {
+                let x=cx+dx; let y=cy+dy;
+                if x<0||x>=SCREEN_WIDTH||y<0||y>=SCREEN_HEIGHT { continue; }
+                ctx.set(x, y, if dx > rw*2/3 { dark } else { bc }, if dx > rw*2/3 { dark } else { bc }, 219u16);
+            }
+        }
+        // Great Red Spot
+        if r > 5 {
+            let sx=cx-r/3; let sy=cy+r/4;
+            for dy in -2i32..=2 { for dx in -4i32..=4 {
+                let x=sx+dx; let y=sy+dy;
+                if x>=0&&x<SCREEN_WIDTH&&y>=0&&y<SCREEN_HEIGHT {
+                    ctx.set(x,y,RGB::from_u8(200,75,55),RGB::from_u8(200,75,55),178u16);
+                }
+            }}
+        }
+    }
+
+    fn draw_planet_saturn(&self, ctx: &mut BTerm, bg: RGB, cx: i32, cy: i32, r: i32) {
+        if r <= 0 { return; }
+        let ring1 = RGB::from_u8(180,158,118);
+        let ring2 = RGB::from_u8(140,120,88);
+        // rings (behind planet — draw first)
+        for dx in -(r*3)..(r*3) {
+            let x = cx+dx;
+            if x<0||x>=SCREEN_WIDTH { continue; }
+            let adx = dx.abs();
+            if adx > r+1 && adx < r*3 {
+                let rc = if dx%3==0 { ring2 } else { ring1 };
+                for ry in [cy-1, cy] {
+                    if ry>=0&&ry<SCREEN_HEIGHT { ctx.set(x, ry, rc, bg, 196u16); }
+                }
+            }
+        }
+        let body = RGB::from_u8(220,200,140);
+        let dark = RGB::from_u8(155,138,88);
+        for dy in -r..=r {
+            let rw = ((r*r-dy*dy) as f32).max(0.0).sqrt() as i32;
+            for dx in -rw..=rw {
+                let x=cx+dx; let y=cy+dy;
+                if x<0||x>=SCREEN_WIDTH||y<0||y>=SCREEN_HEIGHT { continue; }
+                ctx.set(x,y, if dx>rw*2/3{dark}else{body}, if dx>rw*2/3{dark}else{body}, 219u16);
+            }
+        }
+    }
+
+    fn draw_oort_cloud(&self, ctx: &mut BTerm, t: f32) -> RGB {
+        let bg = RGB::from_u8(1, 1, 8);
+        ctx.cls_bg(bg);
+        self.draw_space_stars(ctx, bg, 1.0);
+        // Scattered ice particles
+        let count = (t * 120.0) as i32;
+        for i in 0..count.min(120) {
+            let x = ((i*17 + i*i*3) % (SCREEN_WIDTH as i32)).abs();
+            let y = ((i*11 + i*i*7) % (SCREEN_HEIGHT as i32)).abs();
+            let b = ((i*31)%80) as u8 + 40;
+            ctx.set(x, y, RGB::from_u8(b/2,b/2,b), bg, 250u16);
+        }
+        if t > 0.2 {
+            ctx.print_color(22, 5, RGB::from_u8(140,140,200), bg, "~ Nube de Oort ~");
+        }
+        bg
+    }
+
+    fn draw_space_stars(&self, ctx: &mut BTerm, bg: RGB, alpha: f32) {
+        const STARS: [(i32,i32,u8); 40] = [
+            (5,3,200),(12,7,150),(22,2,255),(31,9,180),(40,4,220),
+            (48,11,160),(58,6,200),(67,3,240),(73,8,170),(2,14,190),
+            (15,17,210),(25,12,155),(35,19,230),(44,15,175),(55,13,205),
+            (64,18,185),(71,14,220),(8,22,165),(19,25,215),(29,20,195),
+            (38,27,175),(50,24,240),(60,21,155),(69,26,200),(3,30,210),
+            (14,33,170),(24,28,195),(34,35,180),(46,32,225),(56,37,165),
+            (66,30,200),(76,34,190),(9,40,215),(20,43,155),(32,38,235),
+            (42,45,175),(53,41,190),(63,47,210),(72,42,165),(78,48,195),
+        ];
+        for &(x,y,b) in &STARS {
+            let v = (b as f32 * alpha) as u8;
+            if v < 15 { continue; }
+            let glyph = if b > 220 { 15u16 } else { 250u16 };
+            ctx.set(x, y, RGB::from_u8(v,v,(v as u32*9/10) as u8), bg, glyph);
+        }
+    }
+
+    fn celebrate(&mut self, ctx: &mut BTerm) {
+        #[cfg(target_arch = "wasm32")]
+        if !self.win_reported {
+            on_game_win(self.score as u32);
+            self.win_reported = true;
+        }
+        let bg = RGB::from_u8(1, 1, 10);
+        ctx.cls_bg(bg);
+        self.draw_space_stars(ctx, bg, 1.0);
+        ctx.print_color(12, 16, RGB::named(YELLOW), bg, "*** FELICITACIONES, GANASTE! ***");
+        ctx.print_color(18, 18, RGB::named(WHITE), bg, "Te fuiste del sistema solar");
+        ctx.print_color(15, 20, RGB::from_u8(150,200,255), bg, "Pasaste la Nube de Oort!");
+        ctx.print_color(20, 22, RGB::from_u8(180,180,255), bg, &format!("Pipes: {}", self.score));
+    }
 }
 
 impl GameState for State {
@@ -433,6 +844,7 @@ impl GameState for State {
         match self.mode {
             GameMode::Playing => self.play(ctx),
             GameMode::End => self.dead(ctx),
+            GameMode::Win => self.celebrate(ctx),
         }
     }
 }
@@ -440,6 +852,7 @@ impl GameState for State {
 enum GameMode {
     Playing,
     End,
+    Win,
 }
 
 struct Player {

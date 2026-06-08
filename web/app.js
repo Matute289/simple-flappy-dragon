@@ -99,6 +99,7 @@ function hideAllOverlays() {
   document.getElementById('menu-overlay').style.display = 'none';
   document.getElementById('gameover-overlay').style.display = 'none';
   document.getElementById('scores-overlay').style.display = 'none';
+  document.getElementById('win-overlay').style.display = 'none';
 }
 
 async function showGameOver(score) {
@@ -158,8 +159,26 @@ async function showScores() {
   document.getElementById('gameover-overlay').style.display = 'none';
 }
 
+async function showWin(score) {
+  stopDragonLoop();
+
+  document.getElementById('win-player-name').textContent =
+    currentPlayerName || 'ANONYMOUS';
+  document.getElementById('win-score-display').textContent = `${score} pts`;
+
+  if (currentPlayerName && score > 0) {
+    await postScore(currentPlayerName, score);
+  }
+
+  document.getElementById('win-overlay').style.display    = 'flex';
+  document.getElementById('menu-overlay').style.display   = 'none';
+  document.getElementById('gameover-overlay').style.display = 'none';
+  document.getElementById('scores-overlay').style.display = 'none';
+}
+
 // ── Called by Rust WASM ──────────────────────────────
 window.on_game_over = async (score) => { await showGameOver(score); };
+window.on_game_win = async (score) => { await showWin(score); };
 
 // ── Menu background animation ────────────────────────
 
@@ -241,6 +260,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   document.getElementById('scores-back-btn').addEventListener('click', () => {
+    showMenu();
+  });
+
+  document.getElementById('win-play-again-btn').addEventListener('click', () => {
+    document.getElementById('win-overlay').style.display = 'none';
+    hideAllOverlays();
+    const isClassic = (currentMode === 'classic');
+    start_game(isClassic);
+    if (!isClassic) startDragonLoop();
+  });
+
+  document.getElementById('win-menu-btn').addEventListener('click', () => {
+    document.getElementById('win-overlay').style.display = 'none';
+    stopDragonLoop();
     showMenu();
   });
 });

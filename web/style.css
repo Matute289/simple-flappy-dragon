@@ -219,6 +219,26 @@ body {
 .btn-row { display: flex; gap: 10px; }
 .btn-row .btn-primary { margin-bottom: 0; padding: 9px 24px; font-size: 14px; }
 
+.win-title {
+  font-size: 36px;
+  font-weight: 900;
+  color: #ffd700;
+  text-shadow: 0 0 20px #ffaa00, 0 0 40px #ff8800;
+  letter-spacing: 4px;
+  margin-bottom: 6px;
+}
+.win-subtitle {
+  font-size: 20px;
+  color: #ffffff;
+  letter-spacing: 6px;
+  margin-bottom: 8px;
+}
+.win-desc {
+  font-size: 15px;
+  color: #aaaaff;
+  letter-spacing: 1px;
+}
+
 /* ── Scores overlay ── */
 #scores-overlay {
   background: rgba(0, 0, 10, 0.96);

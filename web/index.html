@@ -64,6 +64,25 @@
 
   <span id="dragon-sprite" style="display:none; position:fixed; z-index:1; pointer-events:none; font-size:40px; line-height:1; transform:scaleX(-1);">🐉</span>
 
+  <!-- ── Win overlay ── -->
+  <div id="win-overlay" class="overlay" style="display:none; background: radial-gradient(ellipse at center, #050530 0%, #010108 70%);">
+    <div style="font-size:52px; margin-bottom:8px;">🌟</div>
+    <div class="win-title">¡FELICITACIONES!</div>
+    <div class="win-subtitle">GANASTE</div>
+    <div class="win-desc">Te fuiste del sistema solar</div>
+    <div class="win-desc" style="color:#aaaaff; font-size:13px; margin-top:4px;">
+      Pasaste la Nube de Oort
+    </div>
+    <div class="result-box" style="margin-top:20px; margin-bottom:20px;">
+      <div class="result-name" id="win-player-name">ANONYMOUS</div>
+      <div class="result-score" id="win-score-display">0 pts</div>
+    </div>
+    <div class="btn-row">
+      <button id="win-play-again-btn" class="btn-primary" style="margin-bottom:0; padding:9px 24px; font-size:14px;">▶ JUGAR DE NUEVO</button>
+      <button id="win-menu-btn" class="btn-secondary">⌂ MENÚ</button>
+    </div>
+  </div>
+
   <script type="module" src="app.js"></script>
 </body>
 </html>

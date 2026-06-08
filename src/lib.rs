@@ -84,6 +84,7 @@ thread_local! {
     static INITIALIZED: Cell<bool> = Cell::new(false);
     static RESTART_REQUESTED: Cell<bool> = Cell::new(false);
     static PLAYER_Y: Cell<i32> = Cell::new(25);
+    static CLASSIC_MODE: Cell<bool> = Cell::new(false);
 }
 
 /// Returns the player's current row (0–49) so JS can position the dragon overlay.
@@ -99,6 +100,7 @@ pub fn get_player_y() -> i32 {
 #[wasm_bindgen]
 pub fn start_game(classic: bool) {
     console_error_panic_hook::set_once();
+    CLASSIC_MODE.with(|m| m.set(classic));
     let already_running = INITIALIZED.with(|i| i.get());
     if already_running {
         RESTART_REQUESTED.with(|r| r.set(true));
@@ -388,7 +390,8 @@ impl GameState for State {
                 }
             });
             if restart {
-                *self = State::new(self.classic_mode);
+                let new_classic = CLASSIC_MODE.with(|m| m.get());
+                *self = State::new(new_classic);
                 return;
             }
         }
@@ -509,11 +512,9 @@ impl Obstacle {
 
     fn hit_obstacle(&self, player: &Player) -> bool {
         let half_size = self.size / 2;
-        let x_match = if self.classic_mode {
-            player.x == self.x
-        } else {
-            player.x == self.x || player.x == self.x + 1
-        };
+        let pipe_width = if self.classic_mode { 1 } else { 2 };
+        // Range check: player passed through the pipe this frame
+        let x_match = player.x >= self.x && player.x < self.x + pipe_width;
         let above_gap = player.y < self.gap_y - half_size;
         let below_gap = player.y > self.gap_y + half_size;
         x_match && (above_gap || below_gap)

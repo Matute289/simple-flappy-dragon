@@ -7,6 +7,7 @@ let dragonLoopActive = false;
 let dragonAnimId = null;
 
 function startDragonLoop() {
+  if (dragonLoopActive) return; // already running, prevent duplicate rAF chains
   dragonLoopActive = true;
   const dragon = document.getElementById('dragon-sprite');
   dragon.style.display = 'block';

@@ -445,6 +445,7 @@ struct Obstacle {
     x: i32,
     gap_y: i32,
     size: i32,
+    classic_mode: bool,
 }
 
 impl Obstacle {
@@ -453,6 +454,7 @@ impl Obstacle {
             x,
             gap_y: rng.range(10, 40),
             size: gap_size_for(score, classic_mode),
+            classic_mode,
         }
     }
 
@@ -507,7 +509,11 @@ impl Obstacle {
 
     fn hit_obstacle(&self, player: &Player) -> bool {
         let half_size = self.size / 2;
-        let x_match = player.x == self.x || player.x == self.x + 1;
+        let x_match = if self.classic_mode {
+            player.x == self.x
+        } else {
+            player.x == self.x || player.x == self.x + 1
+        };
         let above_gap = player.y < self.gap_y - half_size;
         let below_gap = player.y > self.gap_y + half_size;
         x_match && (above_gap || below_gap)
@@ -584,5 +590,27 @@ mod tests {
         assert!((c0.r - c1.r).abs() < 0.01);
         assert!((c0.g - c1.g).abs() < 0.01);
         assert!((c0.b - c1.b).abs() < 0.01);
+    }
+
+    #[test]
+    fn hit_obstacle_classic_is_1_wide() {
+        // In classic mode, only self.x matches — self.x+1 does NOT kill player
+        let obs = Obstacle { x: 10, gap_y: 25, size: 10, classic_mode: true };
+        let player_at_x = Player { x: 10, y: 5, velocity: 0.0 };   // above gap → hit
+        let player_adj  = Player { x: 11, y: 5, velocity: 0.0 };   // x+1 → no hit
+        assert!( obs.hit_obstacle(&player_at_x));
+        assert!(!obs.hit_obstacle(&player_adj));
+    }
+
+    #[test]
+    fn hit_obstacle_new_is_2_wide() {
+        // In new mode, both self.x and self.x+1 kill the player
+        let obs = Obstacle { x: 10, gap_y: 25, size: 10, classic_mode: false };
+        let player_at_x   = Player { x: 10, y: 5, velocity: 0.0 };
+        let player_at_x1  = Player { x: 11, y: 5, velocity: 0.0 };
+        let player_at_x2  = Player { x: 12, y: 5, velocity: 0.0 };
+        assert!( obs.hit_obstacle(&player_at_x));
+        assert!( obs.hit_obstacle(&player_at_x1));
+        assert!(!obs.hit_obstacle(&player_at_x2));
     }
 }

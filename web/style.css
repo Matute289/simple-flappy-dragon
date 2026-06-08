@@ -257,3 +257,17 @@ body {
   max-height: 60vh;
   overflow-y: auto;
 }
+
+/* ── Dragon animation ── */
+@keyframes dragon-fly {
+  0%   { transform: translateY(0px)  rotate(-3deg); }
+  25%  { transform: translateY(-7px) rotate(-7deg); }
+  50%  { transform: translateY(0px)  rotate(-3deg); }
+  75%  { transform: translateY(4px)  rotate(0deg);  }
+  100% { transform: translateY(0px)  rotate(-3deg); }
+}
+
+#dragon-sprite {
+  animation: dragon-fly 0.7s ease-in-out infinite;
+  transform-origin: center center;
+}

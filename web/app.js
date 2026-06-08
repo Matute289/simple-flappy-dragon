@@ -19,8 +19,8 @@ function startDragonLoop() {
     const cellH = rect.height / 50;
     const cellW  = rect.width  / 80;
     const py = get_player_y();
-    dragon.style.left = (rect.left + cellW * 0.5 - 20) + 'px';
-    dragon.style.top  = (rect.top  + py * cellH + cellH / 2 - 20) + 'px';
+    dragon.style.left = (rect.left + cellW * 0.5 - 44) + 'px';
+    dragon.style.top  = (rect.top  + py * cellH + cellH / 2 - 24) + 'px';
     dragonAnimId = requestAnimationFrame(loop);
   }
   loop();

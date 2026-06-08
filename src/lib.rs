@@ -456,23 +456,61 @@ impl Obstacle {
         }
     }
 
-    fn render(&mut self, ctx: &mut BTerm, player_x: i32, _classic_mode: bool) {
+    fn render(&mut self, ctx: &mut BTerm, player_x: i32, classic_mode: bool) {
         let screen_x = self.x - player_x;
         let half_size = self.size / 2;
-        for y in 0..self.gap_y - half_size {
-            ctx.set(screen_x, y, RED, BLACK, to_cp437('|'));
-        }
-        for y in self.gap_y + half_size..SCREEN_HEIGHT {
-            ctx.set(screen_x, y, RED, BLACK, to_cp437('|'));
+        let gap_top = self.gap_y - half_size;
+        let gap_bot = self.gap_y + half_size;
+
+        if classic_mode {
+            for y in 0..gap_top {
+                ctx.set(screen_x, y, RED, BLACK, to_cp437('|'));
+            }
+            for y in gap_bot..SCREEN_HEIGHT {
+                ctx.set(screen_x, y, RED, BLACK, to_cp437('|'));
+            }
+        } else {
+            let body_dark = RGB::from_u8(30, 100, 30);
+            let body_light = RGB::from_u8(60, 160, 60);
+            let cap_color = RGB::from_u8(80, 190, 80);
+
+            // Top pipe body
+            for y in 0..gap_top.saturating_sub(1) {
+                ctx.set(screen_x,     y, body_dark,  BLACK, 219u16); // █
+                if screen_x + 1 < SCREEN_WIDTH {
+                    ctx.set(screen_x + 1, y, body_light, BLACK, 221u16); // ▌ edge highlight
+                }
+            }
+            // Top pipe bottom cap
+            if gap_top > 0 {
+                ctx.set(screen_x,     gap_top - 1, cap_color, BLACK, 220u16); // ▄
+                if screen_x + 1 < SCREEN_WIDTH {
+                    ctx.set(screen_x + 1, gap_top - 1, cap_color, BLACK, 220u16);
+                }
+            }
+            // Bottom pipe top cap
+            if gap_bot < SCREEN_HEIGHT {
+                ctx.set(screen_x,     gap_bot, cap_color, BLACK, 223u16); // ▀
+                if screen_x + 1 < SCREEN_WIDTH {
+                    ctx.set(screen_x + 1, gap_bot, cap_color, BLACK, 223u16);
+                }
+            }
+            // Bottom pipe body
+            for y in gap_bot + 1..SCREEN_HEIGHT {
+                ctx.set(screen_x,     y, body_dark,  BLACK, 219u16);
+                if screen_x + 1 < SCREEN_WIDTH {
+                    ctx.set(screen_x + 1, y, body_light, BLACK, 221u16);
+                }
+            }
         }
     }
 
     fn hit_obstacle(&self, player: &Player) -> bool {
         let half_size = self.size / 2;
-        let does_x_match = player.x == self.x;
-        let player_above_gap = player.y < self.gap_y - half_size;
-        let player_below_gap = player.y > self.gap_y + half_size;
-        does_x_match && (player_above_gap || player_below_gap)
+        let x_match = player.x == self.x || player.x == self.x + 1;
+        let above_gap = player.y < self.gap_y - half_size;
+        let below_gap = player.y > self.gap_y + half_size;
+        x_match && (above_gap || below_gap)
     }
 }
 

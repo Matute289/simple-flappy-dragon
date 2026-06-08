@@ -211,8 +211,73 @@ impl State {
         ctx.cls();
     }
 
-    // Stub implementations — filled in later tasks
-    fn update_weather(&mut self, _delta_ms: f32) {}
+    fn update_weather(&mut self, delta_ms: f32) {
+        // Only active after 1 full sky cycle
+        if self.sky_time < CLOUD_ACTIVATION_MS {
+            return;
+        }
+
+        // Count down and transition
+        self.weather_timer -= delta_ms / 1000.0;
+        if self.weather_timer <= 0.0 {
+            self.weather_state = self.next_weather_state();
+            self.weather_timer = 15.0 + self.rng.range(0, 30) as f32;
+        }
+
+        // Drift existing clouds left
+        let drift = 0.003 * delta_ms;
+        for cloud in &mut self.clouds {
+            cloud.x -= drift;
+        }
+        self.clouds.retain(|c| c.x > -(c.width as f32 + 2.0));
+
+        // Spawn clouds to match target density
+        let target: usize = match self.weather_state {
+            0 => 0,
+            1 => 3,
+            2 => 6,
+            3 => 10,
+            4 => 8,
+            _ => 0,
+        };
+        while self.clouds.len() < target {
+            let y = self.rng.range(3, 10);
+            let width = match self.weather_state {
+                1 => self.rng.range(4, 9),
+                2 => self.rng.range(8, 16),
+                3 | 4 => self.rng.range(12, 22),
+                _ => 5,
+            };
+            self.clouds.push(Cloud {
+                x: SCREEN_WIDTH as f32 + self.rng.range(0, 20) as f32,
+                y,
+                width,
+            });
+        }
+    }
+
+    fn next_weather_state(&mut self) -> u8 {
+        match self.weather_state {
+            0 => if self.rng.range(0, 10) < 7 { 1 } else { 0 },
+            1 => {
+                let r = self.rng.range(0, 10);
+                if r < 4 { 0 } else if r < 7 { 1 } else { 2 }
+            }
+            2 => {
+                let r = self.rng.range(0, 10);
+                if r < 3 { 1 } else if r < 6 { 2 } else { 3 }
+            }
+            3 => {
+                let r = self.rng.range(0, 10);
+                if r < 4 { 2 } else if r < 7 { 3 } else { 4 }
+            }
+            4 => {
+                if self.rng.range(0, 10) < 6 { 3 } else { 2 }
+            }
+            _ => 0,
+        }
+    }
+
     fn draw_sky(&self, ctx: &mut BTerm, sky_color: RGB) {
         let t = self.sky_time % SKY_TOTAL_MS;
         let phase_f = t / SKY_PHASE_MS;
@@ -274,7 +339,38 @@ impl State {
             ctx.set(moon_x, 5, moon_color, sky_color, 9u16); // ○
         }
     }
-    fn draw_clouds(&self, _ctx: &mut BTerm, _sky_color: RGB) {}
+    fn draw_clouds(&self, ctx: &mut BTerm, sky_color: RGB) {
+        'cloud_loop: for cloud in &self.clouds {
+            let (cloud_glyph, cloud_fg): (u16, RGB) = match self.weather_state {
+                1 => (176, RGB::from_u8(220, 220, 220)), // ░ light
+                2 => (177, RGB::from_u8(190, 190, 190)), // ▒ medium
+                3 => (178, RGB::from_u8(140, 140, 140)), // ▓ heavy
+                4 => (219, RGB::from_u8(70, 70, 80)),    // █ storm
+                _ => continue 'cloud_loop,
+            };
+            let cx = cloud.x as i32;
+            for dx in 0..cloud.width {
+                let x = cx + dx;
+                if x < 0 || x >= SCREEN_WIDTH { continue; }
+                ctx.set(x, cloud.y,     cloud_fg, sky_color, cloud_glyph);
+                if cloud.y + 1 < SCREEN_HEIGHT {
+                    ctx.set(x, cloud.y + 1, cloud_fg, sky_color, cloud_glyph);
+                }
+            }
+            // Rain: only in storm state, columns every 2 chars
+            if self.weather_state == 4 {
+                for dx in (0..cloud.width as usize).step_by(2) {
+                    let x = cx + dx as i32;
+                    if x < 0 || x >= SCREEN_WIDTH { continue; }
+                    for dy in 2i32..10 {
+                        let ry = cloud.y + dy;
+                        if ry >= SCREEN_HEIGHT { break; }
+                        ctx.set(x, ry, RGB::named(CYAN), sky_color, to_cp437('|'));
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl GameState for State {

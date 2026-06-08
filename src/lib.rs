@@ -152,7 +152,7 @@ impl State {
             classic_mode: classic,
             sky_time: 0.0,
             weather_state: 0,
-            weather_timer: 0.0,
+            weather_timer: 20.0,
             clouds: Vec::new(),
             rng,
             #[cfg(target_arch = "wasm32")]
@@ -240,7 +240,8 @@ impl State {
             4 => 8,
             _ => 0,
         };
-        while self.clouds.len() < target {
+        // Spawn at most one cloud per frame to avoid sudden appearance
+        if self.clouds.len() < target {
             let y = self.rng.range(3, 10);
             let width = match self.weather_state {
                 1 => self.rng.range(4, 9),

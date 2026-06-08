@@ -1,44 +1,37 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 24" width="88" height="48" shape-rendering="crispEdges">
-  <!-- Tail: tapers left-downward -->
-  <rect x="0"  y="15" width="3"  height="2" fill="#2d7a33"/>
-  <rect x="3"  y="13" width="3"  height="3" fill="#2d7a33"/>
-  <rect x="6"  y="11" width="4"  height="3" fill="#3a9e3f"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 10" width="48" height="15" shape-rendering="crispEdges">
+  <!-- Tail tip -->
+  <rect x="0" y="4" width="2" height="2" fill="#2d7a33"/>
+  <rect x="2" y="3" width="3" height="3" fill="#3a9e3f"/>
 
-  <!-- Body: horizontal main mass -->
-  <rect x="10" y="9"  width="22" height="5" fill="#3a9e3f"/>
-  <rect x="11" y="10" width="20" height="3" fill="#4db050"/>
-  <rect x="12" y="8"  width="18" height="2" fill="#2d8a34"/>
+  <!-- Body with scale highlights -->
+  <rect x="5"  y="3" width="18" height="4" fill="#3a9e3f"/>
+  <rect x="6"  y="2" width="2"  height="1" fill="#4db050"/>
+  <rect x="10" y="2" width="2"  height="1" fill="#4db050"/>
+  <rect x="14" y="2" width="2"  height="1" fill="#4db050"/>
+  <rect x="18" y="2" width="2"  height="1" fill="#4db050"/>
+  <!-- Belly (lighter stripe) -->
+  <rect x="5"  y="6" width="18" height="1" fill="#5abf60"/>
 
   <!-- Neck -->
-  <rect x="32" y="8"  width="5"  height="4" fill="#3a9e3f"/>
+  <rect x="23" y="2" width="2"  height="5" fill="#3a9e3f"/>
 
   <!-- Head -->
-  <rect x="36" y="7"  width="6"  height="5" fill="#3a9e3f"/>
-  <rect x="40" y="9"  width="4"  height="4" fill="#3a9e3f"/>
+  <rect x="25" y="1" width="5"  height="6" fill="#3a9e3f"/>
 
-  <!-- Horn -->
-  <rect x="39" y="3"  width="2"  height="4" fill="#f5a623"/>
-  <rect x="40" y="2"  width="1"  height="2" fill="#f5a623"/>
+  <!-- Antlers (branched, orange — Chinese dragon style) -->
+  <rect x="27" y="0" width="1"  height="2" fill="#f5a623"/>
+  <rect x="29" y="0" width="1"  height="2" fill="#f5a623"/>
+  <rect x="28" y="1" width="2"  height="1" fill="#f5a623"/>
 
   <!-- Eye -->
-  <rect x="38" y="7"  width="2"  height="2" fill="white"/>
-  <rect x="39" y="7"  width="1"  height="1" fill="#111111"/>
+  <rect x="28" y="2" width="2"  height="2" fill="white"/>
+  <rect x="29" y="2" width="1"  height="1" fill="#111111"/>
 
-  <!-- Jaw accent -->
-  <rect x="40" y="11" width="3"  height="1" fill="#f5a623"/>
+  <!-- Snout -->
+  <rect x="30" y="3" width="2"  height="3" fill="#3a9e3f"/>
+  <rect x="31" y="4" width="1"  height="2" fill="#f5a623"/>
 
-  <!-- Upper wing: spreads up and slightly left from mid-body -->
-  <rect x="16" y="5"  width="6"  height="4" fill="#5abf60"/>
-  <rect x="14" y="3"  width="7"  height="3" fill="#5abf60"/>
-  <rect x="12" y="1"  width="5"  height="3" fill="#4ab055"/>
-  <rect x="10" y="0"  width="3"  height="2" fill="#3a9e3f"/>
-  <rect x="22" y="5"  width="5"  height="4" fill="#5abf60"/>
-  <rect x="21" y="3"  width="4"  height="3" fill="#4ab055"/>
-
-  <!-- Lower wing: spreads down from mid-body -->
-  <rect x="16" y="14" width="6"  height="4" fill="#5abf60"/>
-  <rect x="14" y="17" width="7"  height="3" fill="#4ab055"/>
-  <rect x="12" y="19" width="5"  height="2" fill="#3a9e3f"/>
-  <rect x="22" y="14" width="5"  height="4" fill="#5abf60"/>
-  <rect x="21" y="17" width="4"  height="2" fill="#4ab055"/>
+  <!-- Whiskers / beard (hanging down — distinctive Chinese dragon feature) -->
+  <rect x="28" y="7" width="1"  height="2" fill="#f5a623"/>
+  <rect x="30" y="7" width="1"  height="2" fill="#f5a623"/>
 </svg>

@@ -1,0 +1,48 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [browser]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    name: Build flappy-dragon WASM image and deploy to VPS
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build flappy-dragon image
+        run: |
+          docker buildx build --load \
+            -f deploy/Dockerfile.vps \
+            -t flappy-dragon:latest .
+
+      - name: Save image as tarball
+        run: docker save flappy-dragon:latest | gzip > flappy-dragon.tar.gz
+
+      - name: Copy image to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: mgrinberg
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: flappy-dragon.tar.gz
+          target: /tmp/
+
+      - name: Load image and restart on VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: mgrinberg
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            docker load < /tmp/flappy-dragon.tar.gz
+            rm /tmp/flappy-dragon.tar.gz
+            cd /opt/flappy-dragon
+            docker compose -f docker-compose.vps.yml up -d --force-recreate
+            docker compose -f docker-compose.vps.yml ps

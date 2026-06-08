@@ -1,0 +1,24 @@
+services:
+  flappy-dragon:
+    image: flappy-dragon:latest
+    container_name: flappy-dragon
+    ports:
+      - "127.0.0.1:8006:80"
+    mem_limit: 32m
+    restart: unless-stopped
+    depends_on:
+      flappy-scores:
+        condition: service_healthy
+
+  flappy-scores:
+    image: flappy-scores:latest
+    container_name: flappy-scores
+    volumes:
+      - /opt/flappy-dragon:/data
+    mem_limit: 16m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/"]
+      interval: 5s
+      timeout: 3s
+      retries: 3

@@ -19,8 +19,8 @@ function startDragonLoop() {
     const cellH = rect.height / 50;
     const cellW  = rect.width  / 80;
     const py = get_player_y();
-    dragon.style.left = (rect.left + cellW * 0.5 - 24) + 'px';
-    dragon.style.top  = (rect.top  + py * cellH + cellH / 2 - 15) + 'px';
+    dragon.style.left = (rect.left + cellW * 0.5 - 20) + 'px';
+    dragon.style.top  = (rect.top  + py * cellH + cellH / 2 - 20) + 'px';
     dragonAnimId = requestAnimationFrame(loop);
   }
   loop();
@@ -107,7 +107,7 @@ async function showGameOver(score) {
   // Fetch first, then decide whether to save
   const scores = await fetchScores();
   const lastScore = scores.length > 0 ? scores[scores.length - 1].score : -1;
-  const shouldSave = !!(currentPlayerName && score > 0 && score > lastScore);
+  const shouldSave = !!(currentPlayerName && score > 0);
 
   if (shouldSave) {
     await postScore(currentPlayerName, score);

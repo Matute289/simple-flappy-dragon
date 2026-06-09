@@ -1,6 +1,6 @@
 [package]
 name = "flappy_dragon"
-version = "0.1.0"
+version = "1.0.0"
 authors = ["Matias Grinberg Soldaini <matias.grinberg@mercadolibre.com>"]
 edition = "2018"
 

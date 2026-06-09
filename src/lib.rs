@@ -274,7 +274,8 @@ impl State {
         }
         self.obstacle.render(ctx, self.player.x, self.classic_mode);
 
-        if self.player.x > self.obstacle.x {
+        let pipe_width: i32 = if self.classic_mode { 1 } else { 2 };
+        if self.player.x > self.obstacle.x + pipe_width - 1 {
             self.score += 1;
             self.obstacle = Obstacle::new(
                 self.player.x + SCREEN_WIDTH,
@@ -283,7 +284,7 @@ impl State {
                 &mut self.rng,
             );
         }
-        if self.player.y > SCREEN_HEIGHT || self.obstacle.hit_obstacle(&self.player) {
+        if self.player.y <= 0 || self.player.y > SCREEN_HEIGHT || self.obstacle.hit_obstacle(&self.player) {
             self.mode = GameMode::End;
         }
     }

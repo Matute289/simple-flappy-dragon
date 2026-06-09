@@ -9,6 +9,7 @@ let dragonAnimId = null;
 const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 let gameActive = false;
 let gamePaused = false;
+let canvasScale = 1.0; // updated by fitCanvas(), used to scale dragon
 
 function startDragonLoop() {
   if (dragonLoopActive) return; // already running, prevent duplicate rAF chains
@@ -21,9 +22,11 @@ function startDragonLoop() {
     if (!dragonLoopActive) return;
     const rect = canvas.getBoundingClientRect();
     const cellH = rect.height / 50;
-    const cellW  = rect.width  / 80;
+    const cellW  = rect.width  / 83;
     const py = get_player_y();
-    dragon.style.left = (rect.left + cellW * 0.5 - 24) + 'px';
+    const dragonW = Math.round(48 * canvasScale);
+    dragon.style.width = dragonW + 'px';
+    dragon.style.left = (rect.left + cellW * 3.5 - dragonW / 2) + 'px';
     dragon.style.top  = (rect.top  + py * cellH + cellH / 2 - 7) + 'px';
     dragonAnimId = requestAnimationFrame(loop);
   }
@@ -41,7 +44,9 @@ function fitCanvas() {
   if (!canvas.offsetWidth) return;
   const scaleX = window.innerWidth  / canvas.offsetWidth;
   const scaleY = window.innerHeight / canvas.offsetHeight;
-  const factor = Math.min(scaleX, scaleY);
+  let factor = Math.min(scaleX, scaleY);
+  if (!isTouchDevice) factor = Math.min(factor, 1.5); // desktop: max 1.5x upscale
+  canvasScale = factor;
   canvas.style.transform = `translate(-50%, -50%) scale(${factor})`;
 }
 
@@ -55,6 +60,7 @@ function dismissTapHint() {
 }
 
 function showReadyOverlay(classic) {
+  fitCanvas(); // canvas now has its correct bracket-lib size (called after start_game)
   const overlay  = document.getElementById('ready-overlay');
   const content  = document.getElementById('ready-content');
   const hint = isTouchDevice ? 'TAP para comenzar' : 'SPACE para comenzar';
@@ -309,7 +315,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   newBtn.disabled     = true;
 
   await init();
-  fitCanvas();
+  // fitCanvas() intentionally NOT called here — canvas has default 300×150 size before
+  // start_game() runs. fitCanvas() is called inside showReadyOverlay() instead.
 
   classicBtn.disabled = false;
   newBtn.disabled     = false;
@@ -389,11 +396,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.key === ' ') {
       const readyOverlay = document.getElementById('ready-overlay');
       if (readyOverlay.style.display !== 'none') {
-        // Rust handles SPACE in wait() internally; JS just dismisses the overlay
-        hideReadyOverlay();
-        gameActive = true;
-        if (currentMode !== 'classic') startDragonLoop();
-        showTapHint();
+        // Rust's wait() only watches BEGIN_REQUESTED (not keyboard), so JS must call begin_play()
+        beginPlay();
+        return;
+      }
+      if (gamePaused) {
+        resumeFromPause();
         return;
       }
     }

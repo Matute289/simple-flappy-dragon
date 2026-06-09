@@ -3,7 +3,8 @@ use bracket_lib::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-const SCREEN_WIDTH: i32 = 80;
+const SCREEN_WIDTH: i32 = 83;
+const PLAYER_SCREEN_COL: i32 = 3; // visual column; gives left margin for dragon SVG
 const SCREEN_HEIGHT: i32 = 50;
 #[allow(dead_code)]
 const FRAME_DURATION: f32 = 75.0;
@@ -158,7 +159,7 @@ pub fn start_game(classic: bool) {
 // --- Core game ---
 
 pub fn run(classic: bool) -> BError {
-    let context = BTermBuilder::simple80x50()
+    let context = BTermBuilder::simple(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32)?
         .with_title("Flappy Dragon")
         .build()?;
     main_loop(context, State::new(classic))
@@ -898,7 +899,10 @@ impl State {
         self.obstacle.render(ctx, self.player.x, self.classic_mode);
         self.player.render(ctx, self.classic_mode);
 
-        // Keyboard resume (SPACE or ESC) — JS resume is handled at the top of tick()
+        // On native: keyboard can resume. On WASM, JS handles it via RESUME_REQUESTED
+        // (using ctx.key here on WASM causes the same ESC that triggered the pause to
+        // immediately un-pause within the same tick).
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(k) = ctx.key {
             if matches!(k, VirtualKeyCode::Space | VirtualKeyCode::Escape) {
                 self.mode = GameMode::Playing;
@@ -969,7 +973,7 @@ impl Player {
 
     fn render(&mut self, ctx: &mut BTerm, classic_mode: bool) {
         if classic_mode {
-            ctx.set(0, self.y, YELLOW, BLACK, to_cp437('@'));
+            ctx.set(PLAYER_SCREEN_COL, self.y, YELLOW, BLACK, to_cp437('@'));
         }
         // NEW mode: cell is left as sky background; JS dragon SVG covers the position
         #[cfg(target_arch = "wasm32")]
@@ -1010,7 +1014,7 @@ impl Obstacle {
     }
 
     fn render(&mut self, ctx: &mut BTerm, player_x: i32, classic_mode: bool) {
-        let screen_x = self.x - player_x;
+        let screen_x = self.x - player_x + PLAYER_SCREEN_COL;
         let half_size = self.size / 2;
         let gap_top = self.gap_y - half_size;
         let gap_bot = self.gap_y + half_size;

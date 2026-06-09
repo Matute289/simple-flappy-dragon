@@ -863,7 +863,11 @@ impl State {
         if self.classic_mode {
             ctx.cls_bg(NAVY);
         } else {
-            self.draw_background(ctx);
+            let bg_color = self.draw_background(ctx);
+            if self.score < PHASE_ATMO_END {
+                self.draw_sky(ctx, bg_color);
+                self.draw_clouds(ctx, bg_color);
+            }
         }
 
         // Expose player position so the dragon SVG overlay sits correctly during wait
@@ -874,6 +878,11 @@ impl State {
         if BEGIN_REQUESTED.with(|b| { if b.get() { b.set(false); true } else { false } }) {
             self.mode = GameMode::Playing;
         }
+
+        // Discard any flap input accumulated while waiting — prevents a phantom flap
+        // on the first tick after transitioning to Playing.
+        #[cfg(target_arch = "wasm32")]
+        FLAP_REQUESTED.with(|f| f.set(false));
     }
 
     fn show_paused(&mut self, ctx: &mut BTerm) {
@@ -895,6 +904,11 @@ impl State {
                 self.mode = GameMode::Playing;
             }
         }
+
+        // Discard any flap input accumulated while paused — prevents a phantom flap
+        // on the first tick after resuming to Playing.
+        #[cfg(target_arch = "wasm32")]
+        FLAP_REQUESTED.with(|f| f.set(false));
     }
 }
 

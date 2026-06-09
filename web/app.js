@@ -443,6 +443,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
     if (!gameActive) return;
+    if (e.target.closest('#pause-btn')) return; // let the button's click handler fire
     e.preventDefault();
     flap();
     dismissTapHint();

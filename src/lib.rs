@@ -284,7 +284,7 @@ impl State {
                 &mut self.rng,
             );
         }
-        if self.player.y <= 0 || self.player.y > SCREEN_HEIGHT || self.obstacle.hit_obstacle(&self.player) {
+        if (self.classic_mode && self.player.y <= 0) || self.player.y > SCREEN_HEIGHT || self.obstacle.hit_obstacle(&self.player) {
             self.mode = GameMode::End;
         }
     }
@@ -1074,7 +1074,7 @@ impl Obstacle {
         // Range check: player passed through the pipe this frame
         let x_match = player.x >= self.x && player.x < self.x + pipe_width;
         let above_gap = player.y < self.gap_y - half_size;
-        let below_gap = player.y > self.gap_y + half_size;
+        let below_gap = player.y >= self.gap_y + half_size;
         x_match && (above_gap || below_gap)
     }
 }
@@ -1153,23 +1153,35 @@ mod tests {
 
     #[test]
     fn hit_obstacle_classic_is_1_wide() {
-        // In classic mode, only self.x matches — self.x+1 does NOT kill player
+        // gap_y=25, size=10 → half_size=5 → gap_top=20, gap_bot=30
+        // safe rows: [20, 29]; bottom cap at row 30 → hit
         let obs = Obstacle { x: 10, gap_y: 25, size: 10, classic_mode: true };
-        let player_at_x = Player { x: 10, y: 5, velocity: 0.0 };   // above gap → hit
-        let player_adj  = Player { x: 11, y: 5, velocity: 0.0 };   // x+1 → no hit
-        assert!( obs.hit_obstacle(&player_at_x));
-        assert!(!obs.hit_obstacle(&player_adj));
+        let above_gap  = Player { x: 10, y: 5,  velocity: 0.0 }; // above → hit
+        let in_gap     = Player { x: 10, y: 22, velocity: 0.0 }; // inside → no hit
+        let at_bot_cap = Player { x: 10, y: 30, velocity: 0.0 }; // bottom cap row → hit
+        let below_gap  = Player { x: 10, y: 35, velocity: 0.0 }; // below → hit
+        let adj        = Player { x: 11, y: 5,  velocity: 0.0 }; // x+1 classic → no hit
+        assert!( obs.hit_obstacle(&above_gap));
+        assert!(!obs.hit_obstacle(&in_gap));
+        assert!( obs.hit_obstacle(&at_bot_cap));
+        assert!( obs.hit_obstacle(&below_gap));
+        assert!(!obs.hit_obstacle(&adj));
     }
 
     #[test]
     fn hit_obstacle_new_is_2_wide() {
-        // In new mode, both self.x and self.x+1 kill the player
+        // gap_y=25, size=10 → half_size=5 → gap_top=20, gap_bot=30
+        // safe rows: [20, 29]; bottom cap at row 30 → hit
         let obs = Obstacle { x: 10, gap_y: 25, size: 10, classic_mode: false };
-        let player_at_x   = Player { x: 10, y: 5, velocity: 0.0 };
-        let player_at_x1  = Player { x: 11, y: 5, velocity: 0.0 };
-        let player_at_x2  = Player { x: 12, y: 5, velocity: 0.0 };
-        assert!( obs.hit_obstacle(&player_at_x));
-        assert!( obs.hit_obstacle(&player_at_x1));
-        assert!(!obs.hit_obstacle(&player_at_x2));
+        let at_x      = Player { x: 10, y: 5,  velocity: 0.0 }; // x, above gap → hit
+        let at_x1     = Player { x: 11, y: 5,  velocity: 0.0 }; // x+1, above gap → hit
+        let past      = Player { x: 12, y: 5,  velocity: 0.0 }; // x+2, past pipe → no hit
+        let in_gap    = Player { x: 10, y: 22, velocity: 0.0 }; // inside gap → no hit
+        let at_bot    = Player { x: 10, y: 30, velocity: 0.0 }; // bottom cap → hit
+        assert!( obs.hit_obstacle(&at_x));
+        assert!( obs.hit_obstacle(&at_x1));
+        assert!(!obs.hit_obstacle(&past));
+        assert!(!obs.hit_obstacle(&in_gap));
+        assert!( obs.hit_obstacle(&at_bot));
     }
 }

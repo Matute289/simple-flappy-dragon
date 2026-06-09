@@ -100,6 +100,38 @@ thread_local! {
     static CLASSIC_MODE: Cell<bool> = Cell::new(false);
 }
 
+#[cfg(target_arch = "wasm32")]
+thread_local! {
+    static FLAP_REQUESTED:   Cell<bool> = Cell::new(false);
+    static BEGIN_REQUESTED:  Cell<bool> = Cell::new(false);
+    static PAUSE_REQUESTED:  Cell<bool> = Cell::new(false);
+    static RESUME_REQUESTED: Cell<bool> = Cell::new(false);
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn flap() {
+    FLAP_REQUESTED.with(|f| f.set(true));
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn begin_play() {
+    BEGIN_REQUESTED.with(|b| b.set(true));
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn pause_game() {
+    PAUSE_REQUESTED.with(|p| p.set(true));
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn resume_game() {
+    RESUME_REQUESTED.with(|r| r.set(true));
+}
+
 /// Returns the player's current row (0–49) so JS can position the dragon overlay.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
@@ -164,7 +196,7 @@ impl State {
             player: Player::new(5, 25),
             frame_time: 0.0,
             obstacle,
-            mode: GameMode::Playing,
+            mode: GameMode::Waiting,
             score: 0,
             classic_mode: classic,
             sky_time: 0.0,
@@ -203,6 +235,11 @@ impl State {
         }
 
         if let Some(VirtualKeyCode::Space) = ctx.key {
+            self.player.flap();
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        if FLAP_REQUESTED.with(|f| { if f.get() { f.set(false); true } else { false } }) {
             self.player.flap();
         }
 
@@ -821,38 +858,86 @@ impl State {
         ctx.print_color(15, 20, RGB::from_u8(150,200,255), bg, "Pasaste la Nube de Oort!");
         ctx.print_color(20, 22, RGB::from_u8(180,180,255), bg, &format!("Pipes: {}", self.score));
     }
+
+    fn wait(&mut self, ctx: &mut BTerm) {
+        if self.classic_mode {
+            ctx.cls_bg(NAVY);
+        } else {
+            self.draw_background(ctx);
+        }
+
+        // Expose player position so the dragon SVG overlay sits correctly during wait
+        #[cfg(target_arch = "wasm32")]
+        PLAYER_Y.with(|y| y.set(self.player.y));
+
+        #[cfg(target_arch = "wasm32")]
+        if BEGIN_REQUESTED.with(|b| { if b.get() { b.set(false); true } else { false } }) {
+            self.mode = GameMode::Playing;
+        }
+    }
+
+    fn show_paused(&mut self, ctx: &mut BTerm) {
+        if self.classic_mode {
+            ctx.cls_bg(NAVY);
+        } else {
+            let bg_color = self.draw_background(ctx);
+            if self.score < PHASE_ATMO_END {
+                self.draw_sky(ctx, bg_color);
+                self.draw_clouds(ctx, bg_color);
+            }
+        }
+        self.obstacle.render(ctx, self.player.x, self.classic_mode);
+        self.player.render(ctx, self.classic_mode);
+
+        // Keyboard resume (SPACE or ESC) — JS resume is handled at the top of tick()
+        if let Some(k) = ctx.key {
+            if matches!(k, VirtualKeyCode::Space | VirtualKeyCode::Escape) {
+                self.mode = GameMode::Playing;
+            }
+        }
+    }
 }
 
 impl GameState for State {
     fn tick(&mut self, ctx: &mut BTerm) {
-        // Check for restart request from JS
         #[cfg(target_arch = "wasm32")]
         {
             let restart = RESTART_REQUESTED.with(|r| {
-                if r.get() {
-                    r.set(false);
-                    true
-                } else {
-                    false
-                }
+                if r.get() { r.set(false); true } else { false }
             });
             if restart {
                 let new_classic = CLASSIC_MODE.with(|m| m.get());
                 *self = State::new(new_classic);
                 return;
             }
+
+            // Pause/resume transitions — only affect Playing and Paused states
+            if PAUSE_REQUESTED.with(|p| { if p.get() { p.set(false); true } else { false } }) {
+                if matches!(self.mode, GameMode::Playing) {
+                    self.mode = GameMode::Paused;
+                }
+            }
+            if RESUME_REQUESTED.with(|r| { if r.get() { r.set(false); true } else { false } }) {
+                if matches!(self.mode, GameMode::Paused) {
+                    self.mode = GameMode::Playing;
+                }
+            }
         }
 
         match self.mode {
+            GameMode::Waiting => self.wait(ctx),
             GameMode::Playing => self.play(ctx),
-            GameMode::End => self.dead(ctx),
-            GameMode::Win => self.celebrate(ctx),
+            GameMode::Paused  => self.show_paused(ctx),
+            GameMode::End     => self.dead(ctx),
+            GameMode::Win     => self.celebrate(ctx),
         }
     }
 }
 
 enum GameMode {
+    Waiting,
     Playing,
+    Paused,
     End,
     Win,
 }

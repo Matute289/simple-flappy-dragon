@@ -1006,10 +1006,15 @@ struct Obstacle {
 
 impl Obstacle {
     fn new(x: i32, score: i32, classic_mode: bool, rng: &mut RandomNumberGenerator) -> Self {
+        let size = gap_size_for(score, classic_mode);
+        let half_size = size / 2;
+        // Keep at least 3 rows of pipe visible at top and bottom so the gap never
+        // reaches the screen edge (prevents ceiling-escape and visual SVG overflow).
+        let margin = half_size + 3;
         Obstacle {
             x,
-            gap_y: rng.range(10, 40),
-            size: gap_size_for(score, classic_mode),
+            gap_y: rng.range(margin, SCREEN_HEIGHT - margin),
+            size,
             classic_mode,
         }
     }

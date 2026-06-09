@@ -3,7 +3,8 @@ use bracket_lib::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-const SCREEN_WIDTH: i32 = 80;
+const SCREEN_WIDTH: i32 = 83;
+const PLAYER_SCREEN_COL: i32 = 3; // visual column; gives left margin for dragon SVG
 const SCREEN_HEIGHT: i32 = 50;
 #[allow(dead_code)]
 const FRAME_DURATION: f32 = 75.0;
@@ -100,6 +101,38 @@ thread_local! {
     static CLASSIC_MODE: Cell<bool> = Cell::new(false);
 }
 
+#[cfg(target_arch = "wasm32")]
+thread_local! {
+    static FLAP_REQUESTED:   Cell<bool> = Cell::new(false);
+    static BEGIN_REQUESTED:  Cell<bool> = Cell::new(false);
+    static PAUSE_REQUESTED:  Cell<bool> = Cell::new(false);
+    static RESUME_REQUESTED: Cell<bool> = Cell::new(false);
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn flap() {
+    FLAP_REQUESTED.with(|f| f.set(true));
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn begin_play() {
+    BEGIN_REQUESTED.with(|b| b.set(true));
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn pause_game() {
+    PAUSE_REQUESTED.with(|p| p.set(true));
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn resume_game() {
+    RESUME_REQUESTED.with(|r| r.set(true));
+}
+
 /// Returns the player's current row (0–49) so JS can position the dragon overlay.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
@@ -126,7 +159,7 @@ pub fn start_game(classic: bool) {
 // --- Core game ---
 
 pub fn run(classic: bool) -> BError {
-    let context = BTermBuilder::simple80x50()
+    let context = BTermBuilder::simple(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32)?
         .with_title("Flappy Dragon")
         .build()?;
     main_loop(context, State::new(classic))
@@ -164,7 +197,7 @@ impl State {
             player: Player::new(5, 25),
             frame_time: 0.0,
             obstacle,
-            mode: GameMode::Playing,
+            mode: GameMode::Waiting,
             score: 0,
             classic_mode: classic,
             sky_time: 0.0,
@@ -206,6 +239,11 @@ impl State {
             self.player.flap();
         }
 
+        #[cfg(target_arch = "wasm32")]
+        if FLAP_REQUESTED.with(|f| { if f.get() { f.set(false); true } else { false } }) {
+            self.player.flap();
+        }
+
         self.player.render(ctx, self.classic_mode);
         if self.classic_mode {
             ctx.print(0, 0, "Press SPACE to flap.");
@@ -236,7 +274,8 @@ impl State {
         }
         self.obstacle.render(ctx, self.player.x, self.classic_mode);
 
-        if self.player.x > self.obstacle.x {
+        let pipe_width: i32 = if self.classic_mode { 1 } else { 2 };
+        if self.player.x > self.obstacle.x + pipe_width - 1 {
             self.score += 1;
             self.obstacle = Obstacle::new(
                 self.player.x + SCREEN_WIDTH,
@@ -245,7 +284,7 @@ impl State {
                 &mut self.rng,
             );
         }
-        if self.player.y > SCREEN_HEIGHT || self.obstacle.hit_obstacle(&self.player) {
+        if self.player.y <= 0 || self.player.y > SCREEN_HEIGHT || self.obstacle.hit_obstacle(&self.player) {
             self.mode = GameMode::End;
         }
     }
@@ -821,38 +860,103 @@ impl State {
         ctx.print_color(15, 20, RGB::from_u8(150,200,255), bg, "Pasaste la Nube de Oort!");
         ctx.print_color(20, 22, RGB::from_u8(180,180,255), bg, &format!("Pipes: {}", self.score));
     }
+
+    fn wait(&mut self, ctx: &mut BTerm) {
+        if self.classic_mode {
+            ctx.cls_bg(NAVY);
+        } else {
+            let bg_color = self.draw_background(ctx);
+            if self.score < PHASE_ATMO_END {
+                self.draw_sky(ctx, bg_color);
+                self.draw_clouds(ctx, bg_color);
+            }
+        }
+
+        // Expose player position so the dragon SVG overlay sits correctly during wait
+        #[cfg(target_arch = "wasm32")]
+        PLAYER_Y.with(|y| y.set(self.player.y));
+
+        #[cfg(target_arch = "wasm32")]
+        if BEGIN_REQUESTED.with(|b| { if b.get() { b.set(false); true } else { false } }) {
+            self.mode = GameMode::Playing;
+        }
+
+        // Discard any flap input accumulated while waiting — prevents a phantom flap
+        // on the first tick after transitioning to Playing.
+        #[cfg(target_arch = "wasm32")]
+        FLAP_REQUESTED.with(|f| f.set(false));
+    }
+
+    fn show_paused(&mut self, ctx: &mut BTerm) {
+        if self.classic_mode {
+            ctx.cls_bg(NAVY);
+        } else {
+            let bg_color = self.draw_background(ctx);
+            if self.score < PHASE_ATMO_END {
+                self.draw_sky(ctx, bg_color);
+                self.draw_clouds(ctx, bg_color);
+            }
+        }
+        self.obstacle.render(ctx, self.player.x, self.classic_mode);
+        self.player.render(ctx, self.classic_mode);
+
+        // On native: keyboard can resume. On WASM, JS handles it via RESUME_REQUESTED
+        // (using ctx.key here on WASM causes the same ESC that triggered the pause to
+        // immediately un-pause within the same tick).
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(k) = ctx.key {
+            if matches!(k, VirtualKeyCode::Space | VirtualKeyCode::Escape) {
+                self.mode = GameMode::Playing;
+            }
+        }
+
+        // Discard any flap input accumulated while paused — prevents a phantom flap
+        // on the first tick after resuming to Playing.
+        #[cfg(target_arch = "wasm32")]
+        FLAP_REQUESTED.with(|f| f.set(false));
+    }
 }
 
 impl GameState for State {
     fn tick(&mut self, ctx: &mut BTerm) {
-        // Check for restart request from JS
         #[cfg(target_arch = "wasm32")]
         {
             let restart = RESTART_REQUESTED.with(|r| {
-                if r.get() {
-                    r.set(false);
-                    true
-                } else {
-                    false
-                }
+                if r.get() { r.set(false); true } else { false }
             });
             if restart {
                 let new_classic = CLASSIC_MODE.with(|m| m.get());
                 *self = State::new(new_classic);
                 return;
             }
+
+            // Pause/resume transitions — only affect Playing and Paused states
+            if PAUSE_REQUESTED.with(|p| { if p.get() { p.set(false); true } else { false } }) {
+                if matches!(self.mode, GameMode::Playing) {
+                    self.mode = GameMode::Paused;
+                }
+            }
+            if RESUME_REQUESTED.with(|r| { if r.get() { r.set(false); true } else { false } }) {
+                if matches!(self.mode, GameMode::Paused) {
+                    self.mode = GameMode::Playing;
+                }
+            }
         }
 
         match self.mode {
+            GameMode::Waiting => self.wait(ctx),
             GameMode::Playing => self.play(ctx),
-            GameMode::End => self.dead(ctx),
-            GameMode::Win => self.celebrate(ctx),
+            GameMode::Paused  => self.show_paused(ctx),
+            GameMode::End     => self.dead(ctx),
+            GameMode::Win     => self.celebrate(ctx),
         }
     }
 }
 
 enum GameMode {
+    Waiting,
     Playing,
+    Paused,
     End,
     Win,
 }
@@ -870,7 +974,7 @@ impl Player {
 
     fn render(&mut self, ctx: &mut BTerm, classic_mode: bool) {
         if classic_mode {
-            ctx.set(0, self.y, YELLOW, BLACK, to_cp437('@'));
+            ctx.set(PLAYER_SCREEN_COL, self.y, YELLOW, BLACK, to_cp437('@'));
         }
         // NEW mode: cell is left as sky background; JS dragon SVG covers the position
         #[cfg(target_arch = "wasm32")]
@@ -911,7 +1015,7 @@ impl Obstacle {
     }
 
     fn render(&mut self, ctx: &mut BTerm, player_x: i32, classic_mode: bool) {
-        let screen_x = self.x - player_x;
+        let screen_x = self.x - player_x + PLAYER_SCREEN_COL;
         let half_size = self.size / 2;
         let gap_top = self.gap_y - half_size;
         let gap_bot = self.gap_y + half_size;

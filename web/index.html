@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <title>Flappy Dragon</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -10,6 +11,17 @@
 
   <!-- bracket-terminal requires a canvas with id="canvas" to exist in the DOM -->
   <canvas id="canvas"></canvas>
+  <div id="tap-hint" style="display:none">👆 TAP</div>
+  <button id="pause-btn" aria-label="Pausa" style="display:none">⏸</button>
+  <div id="ready-overlay" class="overlay" style="display:none">
+    <div id="ready-content"></div>
+  </div>
+  <div id="pause-overlay" class="overlay" style="display:none">
+    <div class="pause-box">
+      <div class="pause-title">⏸ PAUSA</div>
+      <div class="pause-hint" id="pause-hint-text">TAP / SPACE para continuar</div>
+    </div>
+  </div>
 
   <!-- ── Menu overlay ── -->
   <div id="menu-overlay" class="overlay">

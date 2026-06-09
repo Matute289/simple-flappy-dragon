@@ -1,9 +1,19 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+html {
+  height: 100%;
+  overflow: hidden;
+  touch-action: none; /* prevents iOS from swallowing touches on WebGL canvas */
+}
+
 body {
   background: #000;
   font-family: monospace;
   overflow: hidden;
+  height: 100%;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* bracket-terminal renders here — sits behind all overlays */
@@ -15,6 +25,7 @@ body {
   transform: translate(-50%, -50%);
   z-index: 0;
   will-change: transform;
+  touch-action: none;
 }
 
 /* ── Overlay base ── */
@@ -361,6 +372,27 @@ body {
   color: #aaa;
   letter-spacing: 2px;
   font-family: monospace;
+}
+
+/* ── Mobile pause button ── */
+#pause-btn {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 215, 0, 0.45);
+  border-radius: 10px;
+  color: #ffd700;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  touch-action: manipulation;
 }
 
 /* ── Responsive fixes for existing overlays ── */

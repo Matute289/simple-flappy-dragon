@@ -10,6 +10,7 @@ const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 let gameActive = false;
 let gamePaused = false;
 let canvasScale = 1.0; // updated by fitCanvas(), used to scale dragon
+let isLandscape = window.innerWidth > window.innerHeight; // tracks orientation for smart pause
 
 function startDragonLoop() {
   if (dragonLoopActive) return; // already running, prevent duplicate rAF chains
@@ -89,16 +90,25 @@ function hideReadyOverlay() {
   document.getElementById('ready-overlay').style.display = 'none';
 }
 
+function showPauseBtn() {
+  if (isTouchDevice) document.getElementById('pause-btn').style.display = 'flex';
+}
+function hidePauseBtn() {
+  document.getElementById('pause-btn').style.display = 'none';
+}
+
 function beginPlay() {
   hideReadyOverlay();
   begin_play();
   gameActive = true;
   if (currentMode !== 'classic') startDragonLoop();
   showTapHint();
+  showPauseBtn();
 }
 
 function showPauseOverlay(reason) {
   gamePaused = true;
+  hidePauseBtn();
   const hintEl = document.getElementById('pause-hint-text');
   hintEl.textContent = isTouchDevice ? 'TAP para continuar' : 'SPACE / ESC para continuar';
   document.getElementById('pause-overlay').style.display = 'flex';
@@ -108,6 +118,7 @@ function resumeFromPause() {
   resume_game();
   document.getElementById('pause-overlay').style.display = 'none';
   gamePaused = false;
+  if (gameActive) showPauseBtn();
 }
 
 // ── API ──────────────────────────────────────────────
@@ -260,6 +271,7 @@ window.on_game_over = async (score) => {
   gamePaused = false;
   dismissTapHint();
   hideReadyOverlay();
+  hidePauseBtn();
   document.getElementById('pause-overlay').style.display = 'none';
   await showGameOver(score);
 };
@@ -268,6 +280,7 @@ window.on_game_win = async (score) => {
   gamePaused = false;
   dismissTapHint();
   hideReadyOverlay();
+  hidePauseBtn();
   document.getElementById('pause-overlay').style.display = 'none';
   await showWin(score);
 };
@@ -343,6 +356,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     await showScores();
   });
 
+  document.getElementById('pause-btn').addEventListener('click', () => {
+    if (gameActive && !gamePaused) {
+      pause_game();
+      showPauseOverlay('manual');
+    }
+  });
+
   document.getElementById('go-play-again-btn').addEventListener('click', () => {
     stopDragonLoop();
     hideAllOverlays();
@@ -353,6 +373,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('go-menu-btn').addEventListener('click', () => {
     stopDragonLoop();
+    hidePauseBtn();
     showMenu();
   });
 
@@ -378,11 +399,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Responsive / input event listeners ──────────────
 
   window.addEventListener('resize', () => {
+    const nowLandscape = window.innerWidth > window.innerHeight;
     fitCanvas();
-    if (isTouchDevice && gameActive && !gamePaused) {
+    if (isTouchDevice && gameActive && !gamePaused && nowLandscape !== isLandscape) {
       pause_game();
       showPauseOverlay('rotation');
     }
+    isLandscape = nowLandscape;
   });
 
   document.addEventListener('visibilitychange', () => {

@@ -10,6 +10,16 @@
 
   <!-- bracket-terminal requires a canvas with id="canvas" to exist in the DOM -->
   <canvas id="canvas"></canvas>
+  <div id="tap-hint" style="display:none">👆 TAP</div>
+  <div id="ready-overlay" class="overlay" style="display:none">
+    <div id="ready-content"></div>
+  </div>
+  <div id="pause-overlay" class="overlay" style="display:none">
+    <div class="pause-box">
+      <div class="pause-title">⏸ PAUSA</div>
+      <div class="pause-hint" id="pause-hint-text">TAP / SPACE para continuar</div>
+    </div>
+  </div>
 
   <!-- ── Menu overlay ── -->
   <div id="menu-overlay" class="overlay">

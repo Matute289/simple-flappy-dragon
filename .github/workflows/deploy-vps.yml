@@ -25,24 +25,19 @@ jobs:
       - name: Save image as tarball
         run: docker save flappy-dragon:latest | gzip > flappy-dragon.tar.gz
 
-      - name: Copy image to VPS
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: mgrinberg
-          key: ${{ secrets.VPS_SSH_KEY }}
-          source: flappy-dragon.tar.gz
-          target: /tmp/
-
-      - name: Load image and restart on VPS
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: mgrinberg
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            docker load < /tmp/flappy-dragon.tar.gz
-            rm /tmp/flappy-dragon.tar.gz
-            cd /opt/flappy-dragon
-            docker compose -f docker-compose.vps.yml up -d --force-recreate
-            docker compose -f docker-compose.vps.yml ps
+      # Deploy through the restricted `deploy` user (MyServerVPS Stage 8): the key can only upload
+      # an image tarball to its own inbox and run `deploy`; the server validates the tag, loads the image
+      # and recreates the container. Compose files live on the server (/opt/...), not in CI.
+      - name: Upload image and deploy
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY_FLAPPY_DRAGON }}
+          KNOWN_HOSTS: ${{ vars.VPS_KNOWN_HOSTS }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          SSH="ssh -i $HOME/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+          rsync -e "$SSH" flappy-dragon.tar.gz "deploy@${VPS_HOST}:image.tar.gz"
+          $SSH "deploy@${VPS_HOST}" deploy

@@ -16,14 +16,16 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build flappy-dragon image
+      # Build straight to a tarball instead of `--load` + `docker save`. With Docker 29's containerd image store
+      # (ubuntu-latest moved to Ubuntu 26 on 2026-10-19) `docker save` keeps the layers gzip-compressed, and the
+      # server's deploy wrapper (xindeler-deploy-app) refuses any compressed member inside the archive to bound
+      # decompression. Uncompressed layers + force-compression passes it; the outer gzip is what the wrapper expects.
+      - name: Build flappy-dragon image and save it as a tarball
         run: |
-          docker buildx build --load \
+          docker buildx build \
             -f deploy/Dockerfile.vps \
-            -t flappy-dragon:latest .
-
-      - name: Save image as tarball
-        run: docker save flappy-dragon:latest | gzip > flappy-dragon.tar.gz
+            --output type=docker,dest=flappy-dragon.tar,name=flappy-dragon:latest,compression=uncompressed,force-compression=true .
+          gzip -f flappy-dragon.tar
 
       # Deploy through the restricted `deploy` user (MyServerVPS Stage 8): the key can only upload
       # an image tarball to its own inbox and run `deploy`; the server validates the tag, loads the image
